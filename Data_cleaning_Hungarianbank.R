@@ -1,4 +1,3 @@
-# Quieres pelear?
 rm(list=ls())
 
 library(ggplot2)
