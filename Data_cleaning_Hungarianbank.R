@@ -26,10 +26,14 @@ attach(data)
 
 # Response Variable (SAR)
 data$SAR<- ifelse(data$CASE_STATUS=="Reported/Closed",1,ifelse(data$CASE_STATUS=="Closed",0,NA))
-
-
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Closed" )]=0
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Linked Closed" )]=0
+data$SAR=as.factor(data$SAR)
+data$CUSTOMER_SEGMENT=as.factor(data$CUSTOMER_SEGMENT)
+data$EVENT_MONTH=as.factor(data$EVENT_MONTH)
+data=data[!is.na(data$SAR),]
+data$EVENT_MONTH = factor(data$EVENT_MONTH,levels(data$EVENT_MONTH)[c(5, 4, 8, 1, 9, 7, 6,
+                                                                      2, 12, 11, 10, 3)])
 
 #count the balance of resoponse
 table(data$SAR)
@@ -58,9 +62,28 @@ aggr_plot <- aggr(datanew, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE,
 
 
 # Missing Values
+data_missing=mice(data,m=5,meth='pmm',maxit=0,seed=500)
+summary(data_missing)
+densityplot(data_missing,~.) #put here a variable of interest #
+stripplot(data_missing,pch=20,cex=1.2)
 
-# Feature reduction
+# Feature reduction - Boruta
 
+data2=data[complete.cases(data),]
+index_train=createDataPartition(data2$SAR,p=.70)
+data2_train=data2[unlist(index_train),]
+  #Use a meaningful set of explanatory vars
+data2_train=data2_train[c()]
+set.seed(123)
+boruta.train=Boruta(data2_train$SAR~., data = data2_train, doTrace = 2)
+print(boruta.train)
+plot(boruta.train, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
+  boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+     at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
 
 
 
