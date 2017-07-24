@@ -1,0 +1,125 @@
+rm(list=ls())
+
+library(ggplot2)
+library(GGally)
+library(VIM)
+library(readr)
+library(translate)
+library(data.table)
+library(dplyr)
+library(compare)
+library(reshape2)
+library(mice)
+library(caret)
+library(Boruta)
+library(cluster)
+
+# Load data properly
+setwd("C:/Users/orteg/Desktop")
+data<-fread("Hungarian Data - Cleaned shit updated.csv")
+original_data<-data[1:57383,]
+
+# Make one new variable - if customer branch and account branch are equal then 1 and if not then 0, otherwise NA
+original_data$Customer_Equals_Account<-ifelse(original_data$CUSTOMER_BRANCH==original_data$ACCOUNT_BRANCH,0,1)
+data<- subset(original_data, select=-c(EqualTo,Compound_ID,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID,CREDIT_DEBIT_CODE, TXN_TYPE_DESC, ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,POSTAL_CODE,BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
+
+
+# Response Variable (SAR)
+n<-dim(data)[1]
+data$SAR= ifelse(data$CASE_STATUS=="Reported/Closed",1,0)
+data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Closed" )]=0
+data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Linked Closed" )]=0
+data$SAR=as.factor(data$SAR)
+data$CUSTOMER_SEGMENT=as.factor(data$CUSTOMER_SEGMENT)
+data$EVENT_MONTH=as.factor(data$EVENT_MONTH)
+data=data[!is.na(data$SAR),]
+data$EVENT_MONTH = factor(data$EVENT_MONTH,levels(data$EVENT_MONTH)[c(5, 4, 8, 1, 9, 7, 6,
+                                                                      2, 12, 11, 10, 3)])
+
+#count the balance of resoponse
+table(data$SAR)
+summary(data$SAR)
+
+# Delete NA values from SAR variable
+datanew<-data[with(data,!is.na(data$SAR))]
+
+# Descriptive Statistics
+### Exploratory Analysis ####
+datanew_Q1=datanew[CAL_QUARTER==1,]
+ggpairs(datanew,columns=c('SAR','NUM_CASES','CUSTOMER_FOR_DAYS'))
+ggpairs(datanew_Q1,columns=c('SAR','NUM_CASES','CUSTOMER_FOR_DAYS'))
+
+ggplot(datanew, aes(x = datanew$CAL_QUARTER, fill = datanew$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+ggplot(datanew, aes(x = EVENT_MONTH, fill = datanew$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+aggr_plot <- aggr(datanew, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
+                  labels=names(datanew), cex.axis=.7, gap=3, 
+                  ylab=c("Histogram of missing data","Pattern"))
+
+# CLUSTER ANALYSIS
+# CLUSTER NONHIERARCHICAL - PRIV 
+
+datanew_priv=filter(datanew,CUSTOMER_SEGMENT=='PRIV')
+datanew_org=filter(datanew,CUSTOMER_SEGMENT=='GOV' | CUSTOMER_SEGMENT=='SME'| CUSTOMER_SEGMENT=='REG')
+datanew_num_priv=select_if(datanew_priv, is.numeric)
+datanew_num_org=select_if(datanew_org, is.numeric)
+# K=5
+cl5=clara(datanew_num_priv[,1:7],5)
+datanew_priv$labels_k5=cl5$clustering
+ggplot(datanew_priv, aes(x = as.factor(datanew_priv$labels_k5), fill = datanew_priv$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+# K=4
+cl4=clara(datanew_num_priv[,1:7],4)
+datanew_priv$labels_k4=cl4$clustering
+ggplot(datanew_priv, aes(x = as.factor(datanew_priv$labels_k4), fill = datanew_priv$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+# K=3
+cl3=clara(datanew_num_priv[,1:7],3)
+datanew_priv$labels_k3=cl3$clustering
+ggplot(datanew_priv, aes(x = as.factor(datanew_priv$labels_k3), fill = datanew_priv$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+table_k3 <- table(datanew_priv$SAR,datanew_priv$labels_k3)
+prop.table(table_k3,2)
+table_k4 <- table(datanew_priv$SAR,datanew_priv$labels_k4)
+prop.table(table_k4,2)
+table_k5 <- table(datanew_priv$SAR,datanew_priv$labels_k5)
+prop.table(table_k5,2)
+perf_measures=list(cl3$objective,cl4$objective,cl5$objective)
+perf_measures
+
+# Missing Values
+data_missing=mice(data,m=5,meth='pmm',maxit=0,seed=500)
+summary(data_missing)
+densityplot(data_missing,~.) #put here a variable of interest #
+stripplot(data_missing,pch=20,cex=1.2)
+
+
+
+# Feature reduction - Boruta
+
+data2=data[complete.cases(data),]
+index_train=createDataPartition(data2$SAR,p=.70)
+data2_train=data2[unlist(index_train),]
+  #Use a meaningful set of explanatory vars
+data2_train=data2_train[c()]
+set.seed(123)
+boruta.train=Boruta(data2_train$SAR~., data = data2_train, doTrace = 2)
+print(boruta.train)
+plot(boruta.train, xlab = "", xaxt = "n")
+lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
+  boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
+names(lz) <- colnames(boruta.train$ImpHistory)
+Labels <- sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+     at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
