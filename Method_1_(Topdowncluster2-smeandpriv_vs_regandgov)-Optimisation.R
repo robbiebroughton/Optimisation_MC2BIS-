@@ -2,9 +2,11 @@ rm(list=ls())
 
 library(ggplot2)
 library(GGally)
+library(Ridit)
 library(VIM)
 library(readr)
 library(translate)
+library(FSelector)
 library(data.table)
 library(dplyr)
 library(car)
@@ -17,13 +19,12 @@ library(Boruta)
 
 # Load data properly
 setwd("C:/Users/RobbieBroughton/Documents/MC2BIS")
-data<-fread("Hungarian_Data_Cleaned_shit_updated.csv",na.strings=c(""," ","NA")) # so that it interprets blank spaces as NA's
-original_data<-data[1:57383,]
+data<-fread("Hungaria_Data_ excel_for_VA_Cleaned_Corrected_Risk_scores.csv",na.strings=c(""," ","NA")) # so that it interprets blank spaces as NA's
 
 # Make one new variable - if customer branch and account branch are equal then 1 and if not then 0, otherwise NA
-original_data$Customer_Equals_Account<-ifelse(original_data$CUSTOMER_BRANCH==original_data$ACCOUNT_BRANCH,0,1)
+data$Customer_Equals_Account<-ifelse(data$CUSTOMER_BRANCH==data$ACCOUNT_BRANCH,0,1)
 
-data<- subset(original_data, select=-c(EqualTo,Compound_ID,ALERT_CUSTOMER_SEGMENT,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID,CREDIT_DEBIT, TXN_TYPE_DESC, ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,POSTAL_CODE,BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
+data<- subset(data, select=-c(EqualTo,Compound_ID,ALERT_CUSTOMER_SEGMENT,CREDIT_DEBIT_CODE,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID, TXN_TYPE_DESC, ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,POSTAL_CODE,BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
 attach(data)
 
 # Response Variable (SAR)
@@ -74,15 +75,11 @@ smalldata<-datanew[which(CUSTOMER_SEGMENT=="REG"|CUSTOMER_SEGMENT=="PRIV"),]
 
 ## Company Data ##
 
-hi<-bigdata[which(is.na(bigdata$COUNTRY_OF_ORIGIN))]
-
 ## Investigate effect of categoricals on response (to see if important) ##
 
 ggplot(bigdata, aes(x = COUNTRY_OF_ORIGIN, fill = as.factor(SAR))) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
-
-sum(is.na(smalldata$COUNTRY_OF_ORIGIN))
 
 ggplot(bigdata, aes(x = SCENARIO, fill = as.factor(SAR))) + 
   geom_bar(position = "fill") +
@@ -185,7 +182,7 @@ ggplot(bigdata, aes(x = RISK_SCORE_2, fill = as.factor(SAR))) +
 ggplot(bigdata, aes(x = RISK_SCORE_1, fill = as.factor(SAR))) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
-# equal proportion of SAR's for all groups here - maybe this risk scoring isnt that good and we should group differently
+#equal proportion of SAR's for all groups here - maybe this risk scoring isnt that good and we should group differently
 
 ggplot(bigdata, aes(x = Customer_Equals_Account, fill = as.factor(SAR))) + 
   geom_bar(position = "fill") +
@@ -197,20 +194,109 @@ ggplot(bigdata, aes(x = `SC01_Amount_Exceding_250000_(HUF)`, fill = as.factor(SA
   theme(axis.text.x = element_text(angle = 90))
 #not so much difference - binary
 
+ggplot(bigdata, aes(x = CREDIT_DEBIT, fill = as.factor(SAR))) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
 # To remove = Customer_TYPE (all are corporate in this case), CAL_quarter (because it doesnt contain info of event_month)
 bigdata1<-subset(bigdata,select=-c(CUSTOMER_TYPE,CAL_QUARTER))
 
 ## Investigate effect of continuous vars on each other - if plot against response its not informative ##
 ggpairs(data=bigdata1,columns=c('SAR','BASE_CURRENCY_AMOUNT','NUM_CASES','NUM_ACCOUNTS','CUSTOMER_FOR_DAYS'))
 #correlations here indicate not much multicolin and also not highly correlated to SAR
-ggpairs(data=bigdata1,columns=c())
 
-#continue from here - get more info about rest of categoricals and also relationship with scenario description vars
-#.....#
+# get more info about rest of categoricals and also relationship with scenario description vars
+# tried to find relationship between scenario description vars but either get error saying to adjust cardinality threshold or trying pairs function cant deal with NA's well
+# best to decide what i should remove by hand first in these variables
+
+## Feature Selection ##
+
+# we will remove all vars with greater than 15% missing values (too unreliable to impute acc to reports)
+rankmissing<-data.frame(sapply(bigdata1,function(x) mean(is.na(x))) %>%
+                          sort())# gets vers percentage of missing vals and the order
+
+varnames<-data.frame(row.names(rankmissing))
+workingvars<-varnames[1:22,]
+
+refineddata<-subset(bigdata1,select=c(SCENARIO,EVENT_MONTH, RAISED_ON, PEP_FLAG, SPECIAL_ATTENTION_FLAG, RISK_SCORE_1,BUSINESS_TYPE2, CUSTOMER_STATUS, NUM_CASES, NUM_ACCOUNTS, CUSTOMER_FOR_DAYS,CUSTOMER_SEGMENT, TIME_PERIOD, CUSTOMER_REGION, RISK_SCORE_2, SC01_Amount_Exceding_250000__HUF_, SAR, COUNTRY_OF_ORIGIN,COUNTRY_OF_RESIDENCE_abbrev, ORIGINAL_ACCOUNT_CURRENCY,Customer_Equals_Account,STATUS))
+# subset of 21 explan variables (with more possibly to introduce)
+# note that now I have removed some seemingly good variables (because they have lots of NA's) but if they NA's are not actually missing values then I can reintroduce these guys possibly, revisit later
+# possible vars to consider include: 
+
+categors<-subset(bigdata1,select=c(as.factor(Customer_Equals_Account),EVENT_MONTH,                                                                                                                
+                                   TXN_TYPE,                                                                                                          
+                                   INSTRUMENT,                                                                                                            
+                                   SCOPE,                                                                                                                    
+                                   REGION,                                                                                                                    
+                                   RAISED_ON,                                                                                                         
+                                   PEP_FLAG,                                                                                                                   
+                                   SPECIAL_ATTENTION_FLAG,                                                                                                    
+                                   COUNTRY_OF_ORIGIN,                                                                                                          
+                                   COUNTRY_OF_RESIDENCE_abbrev,                                                                                                
+                                   BUSINESS_TYPE2,                                                                                                             
+                                   CUSTOMER_STATUS,
+                                   ORIGINAL_ACCOUNT_CURRENCY,                                                                                                  
+                                   STATUS,                                                                                                                     
+                                   CUSTOMER_SEGMENT,                                                                                                           
+                                   TIME_PERIOD,                                                                                                                
+                                   CUSTOMER_REGION,                                                                                                            
+                                   DISTRICT_OF_BUDAPEST,                                                                                                       
+                                   SECOND_PARTY_COUNTRY,SAR))
+#all above are now categoricals
+# first convert categoricals to factors and leave continuous as they are
+categoricals<-chi.squared(SAR~., categors)
 
 
 
+#Remove Redundant Features (with low correlation with response)
+# calculate correlation matrix
+correlationMatrix <- cor(bigdata1[,1:8])
+# summarize the correlation matrix
+print(correlationMatrix)
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
 
-# Missing Values
+## Missing Values ##
 
-# Feature reduction
+rankmissing<-data.frame(sapply(bigdata1,function(x) mean(is.na(x))) %>%
+                          sort())# gets vers percentage of missing vals and the order
+#
+varnames<-data.frame(row.names(hey))
+workingvars<-hi[1:22,]
+
+refineddata<-subset(bigdata1,select=c(SCENARIO,EVENT_MONTH, RAISED_ON, PEP_FLAG, SPECIAL_ATTENTION_FLAG, RISK_SCORE_1,BUSINESS_TYPE2, CUSTOMER_STATUS, NUM_CASES, NUM_ACCOUNTS, CUSTOMER_FOR_DAYS,CUSTOMER_SEGMENT, TIME_PERIOD, CUSTOMER_REGION, RISK_SCORE_2, SC01_Amount_Exceding_250000_(HUF), SAR, COUNTRY_OF_ORIGIN,COUNTRY_OF_RESIDENCE_abbrev, ORIGINAL_ACCOUNT_CURRENCY,Customer_Equals_Account,STATUS))
+# note that now I have removed some seemingly good variables (because they have lots of NA's) but if they NA's are not actually missing values then I can reintroduce these guys possibly, revisit later
+
+data_missing=mice(data,m=5,meth='pmm',maxit=0,seed=500)
+summary(data_missing)
+densityplot(data_missing,~.) #put here a variable of interest #
+stripplot(data_missing,pch=20,cex=1.2)
+
+## Standardising (categorizing) variables (attempt) ##
+#convert categoricals to ridit score (less categoricals to deal with)
+tab1<-table(bigdata1$SAR,bigdata1$SCENARIO)
+tab2<-table(bigdata1$SAR,bigdata1$EVENT_MONTH)
+tab3<-table(bigdata1$SAR,bigdata1$BUSINESS_TYPE2)
+tab4<-table(bigdata1$SAR,bigdata1$COUNTRY_OF_RESIDENCE_abbrev)
+tab5<-table(bigdata1$SAR,bigdata1$TXN_TYPE)
+tab6<-table(bigdata1$SAR,bigdata1$COUNTRY_OF_ORIGIN)
+tab7<-table(bigdata1$SAR,bigdata1$CUSTOMER_REGION)
+tab8<-table(bigdata1$SAR,bigdata1$TIME_PERIOD)
+tab9<-table(bigdata1$SAR,bigdata1$STATUS)
+tab10<-table(bigdata1$SAR,bigdata1$DISTRICT_OF_BUDAPEST)
+tab11<-table(bigdata1$SAR,bigdata1$SECOND_PARTY_COUNTRY)
+
+bigdata1$SCENARIO_2<-ridit(tab1,g=2)
+bigdata1$EVENT_MONTH_2<-ridit(tab2,g=2)
+bigdata1$BUSINESS_TYPE2_2<-ridit(tab3,g=2)
+bigdata1$COUNTRY_OF_RESIDENCE_abbrev_2<-ridit(tab4,g=2)
+bigdata1$TXN_TYPE_2<-ridit(tab5,g=2)
+bigdata1$COUNTRY_OF_ORIGIN_2<-ridit(tab6,g=2)
+bigdata1$CUSTOMER_REGION_2<-ridit(tab7,g=2)
+bigdata1$TIME_PERIOD_2<-ridit(tab8,g=2)
+bigdata1$STATUS<-ridit(tab9,g=2)
+bigdata1$DISTRICT_OF_BUDAPEST<-ridit(tab10,g=2)
+bigdata1$SECOND_PARTY_COUNTRY<-ridit(tab11,g=2)
+#interpretted as an estimate of the probability a random observation from that group will be greater than or equal to a random observation from the reference group
