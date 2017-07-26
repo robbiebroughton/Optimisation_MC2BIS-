@@ -30,7 +30,7 @@ attach(data)
 
 #Credit_Debit_code or Credit_Debit- which to delete?
 table(original_data$CREDIT_DEBIT_CODE)
-table(original_data$CREDIT_DEBIT) # this one
+table(original_data$CREDIT_DEBIT) # this one 
 data<- subset(data, select=-c(CREDIT_DEBIT))
 
 # Response Variable (SAR)
