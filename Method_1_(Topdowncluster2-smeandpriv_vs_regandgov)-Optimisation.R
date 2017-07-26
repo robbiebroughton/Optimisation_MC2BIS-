@@ -59,7 +59,6 @@ par(mfrow=c(1,2))
 boxplot(NUM_CASES~CUSTOMER_SEGMENT, horizontal=F, data=datanew, col = "gray",ylab='Base Currenct Amount')
 boxplot(NUM_ACCOUNTS~CUSTOMER_SEGMENT, horizontal=F, data=datanew, col = "gray",ylab='Base Currenct Amount')
 boxplot(BASE_CURRENCY_AMOUNT~CUSTOMER_SEGMENT, horizontal=F, data=nona1, col = "gray",ylab='Base Currenct Amount', ylim = c(-1, 1)) #here we see small med and priv are similar and others are similar (possible top down clusters)
-boxplot(SC04_AVG_Cash_Deposit~CUSTOMER_SEGMENT, horizontal=F, data=datanew, col = "gray",ylab='Base Currenct Amount')
 
 # Conclusion is that different segments have diff behaviour for dif vars so just try different top down cluster solutions and compare
 # Ask Tom to show how to visualise better in SAS
