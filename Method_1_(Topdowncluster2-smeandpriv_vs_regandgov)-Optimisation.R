@@ -24,13 +24,16 @@ data<-fread("Hungaria_Data_ excel_for_VA_Cleaned_Corrected_Risk_scores.csv",na.s
 # Make one new variable - if customer branch and account branch are equal then 1 and if not then 0, otherwise NA
 data$Customer_Equals_Account<-ifelse(data$CUSTOMER_BRANCH==data$ACCOUNT_BRANCH,0,1)
 
-data<- subset(data, select=-c(EqualTo,Compound_ID,ALERT_CUSTOMER_SEGMENT,CREDIT_DEBIT_CODE,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID, TXN_TYPE_DESC, ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,POSTAL_CODE,BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
+data<- subset(data, select=-c(EqualTo,Compound_ID,ALERT_CUSTOMER_SEGMENT,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID, TXN_TYPE_DESC, ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,POSTAL_CODE,BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
 attach(data)
+
+#Credit_Debit_code or Credit_Debit- which to delete?
+table(original_data$CREDIT_DEBIT_CODE)
+table(original_data$CREDIT_DEBIT) # this one
+data<- subset(data, select=-c(CREDIT_DEBIT))
 
 # Response Variable (SAR)
 data$SAR<- ifelse(data$CASE_STATUS=="Reported/Closed",1,ifelse(data$CASE_STATUS=="Closed",0,NA))
-
-
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Closed" )]=0
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Linked Closed" )]=0
 
@@ -43,6 +46,22 @@ datanew<-data[with(data,!is.na(data$SAR))]
 
 # After creation of SAR I can now delete STATUS_NAME and CASE_STATUS
 datanew<-subset(datanew,select=-c(CASE_STATUS,STATUS_NAME))
+
+# Merge 2 similar Credit_Debit variables : Sc16,17,18 and the original one 
+#Replace in SC16 variable with D and C to check with the main credit debit code variable
+
+##check
+datanew$SC16_17_18_Type_Transaction__Credit_Debit_[datanew$SC16_17_18_Type_Transaction__Credit_Debit_=='Debit']<-"D" 
+datanew$SC16_17_18_Type_Transaction__Credit_Debit_[datanew$SC16_17_18_Type_Transaction__Credit_Debit_=='Credit']<-"C"
+merger<-subset(datanew,select=c(CREDIT_DEBIT_CODE,SC16_17_18_Type_Transaction__Credit_Debit_))
+na1<-sum(is.na(merger$CREDIT_DEBIT_CODE));na1
+na2<-sum(is.na(merger$SC16_17_18_Type_Transaction__Credit_Debit_));na2
+new<-merger[complete.cases(merger$SC16_17_18_Type_Transaction__Credit_Debit_),]
+##check
+
+#no observations in sc161718 CD code that arent in the main credit debit code variable, so delete sc16_17_18!
+datanew<-subset(datanew,select=-c(SC16_17_18_Type_Transaction__Credit_Debit_))
+
 
 # Check is it necessary to make 4 different data sets or can we get away with two (similar behaviour for the companies?)
 # Visualisation to see similar average values for a subset of variables!
