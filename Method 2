@@ -62,8 +62,10 @@ aggr_plot <- aggr(datanew, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE,
                   labels=names(datanew), cex.axis=.7, gap=3, 
                   ylab=c("Histogram of missing data","Pattern"))
 
+sapply(datanew,function(x) mean(is.na(x))) %>%
+  sort()
 # CLUSTER ANALYSIS
-# CLUSTER NONHIERARCHICAL - PRIV 
+    # CLUSTER NONHIERARCHICAL - PRIV 
 
 datanew_priv=filter(datanew,CUSTOMER_SEGMENT=='PRIV')
 datanew_org=filter(datanew,CUSTOMER_SEGMENT=='GOV' | CUSTOMER_SEGMENT=='SME'| CUSTOMER_SEGMENT=='REG')
@@ -97,6 +99,50 @@ table_k5 <- table(datanew_priv$SAR,datanew_priv$labels_k5)
 prop.table(table_k5,2)
 perf_measures=list(cl3$objective,cl4$objective,cl5$objective)
 perf_measures
+
+by_k3=datanew_priv %>% group_by(datanew_priv$labels_k3) %>%
+  summarise(
+    mean=mean(NUM_ACCOUNTS),
+    SAR=mean(as.numeric(SAR))
+  )
+
+# CLUSTER NONHIERARCHICAL - ORG
+
+# K=5
+cl5_org=clara(datanew_num_org[,1:7],5)
+datanew_org$labels_k5=cl5_org$clustering
+ggplot(datanew_org, aes(x = as.factor(datanew_org$labels_k5), fill = datanew_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+# K=4
+cl4_org=clara(datanew_num_org[,1:7],4)
+datanew_org$labels_k4=cl4_org$clustering
+ggplot(datanew_org, aes(x = as.factor(datanew_org$labels_k4), fill = datanew_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+# K=3
+cl3_org=clara(datanew_num_org[,1:7],3)
+datanew_org$labels_k3=cl3_org$clustering
+ggplot(datanew_org, aes(x = as.factor(datanew_org$labels_k3), fill = datanew_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+table_k3 <- table(datanew_org$SAR,datanew_priv$labels_k3)
+prop.table(table_k3,2)
+table_k4 <- table(datanew_org$SAR,datanew_priv$labels_k4)
+prop.table(table_k4,2)
+table_k5 <- table(datanew_org$SAR,datanew_priv$labels_k5)
+prop.table(table_k5,2)
+perf_measures_org=list(cl3_org$objective,cl4_org$objective,cl5_org$objective)
+perf_measures_org
+
+by_k3=datanew_priv %>% group_by(datanew_priv$labels_k3) %>%
+  summarise(
+    mean=mean(NUM_ACCOUNTS),
+    SAR=mean(as.numeric(SAR))
+  )
+
 
 # Missing Values
 data_missing=mice(data,m=5,meth='pmm',maxit=0,seed=500)
