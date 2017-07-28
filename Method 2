@@ -3,13 +3,13 @@
 ######################################
 
 rm(list=ls())
-
 library(ggplot2)
 library(GGally)
 library(VIM)
 library(readr)
 library(translate)
 library(data.table)
+library(plyr)
 library(dplyr)
 library(compare)
 library(reshape2)
@@ -20,7 +20,7 @@ library(cluster)
 
 # Load data properly
 setwd("C:/Users/orteg/Dropbox/MC2BIS/VS - OPT data")
-data<-fread("Hungarian_Data_updated_col_names_CSV_new_acc_bal_incl.csv")
+data<-fread("Hungarian_Data_updated_col_names_CSV_new_acc_bal_incl.csv",na.strings = c('',' ','NA'))
 original_data<-data[1:57383,]
 
 # Make one new variable - if customer branch and account branch are equal then 1 and if not then 0, otherwise NA
@@ -54,10 +54,11 @@ summary(data$SAR)
 datanew = data[with(data,!is.na(data$SAR))]
 # After creation of SAR I can now delete STATUS_NAME and CASE_STATUS
 datanew = subset(datanew,select=-c(CASE_STATUS,STATUS_NAME))
+
 # Remove duplicates in column names
 duplicates_datanew = datanew[,!duplicated(names(datanew))]
 datanew = datanew[,duplicates_datanew,with=F]
-datanew_Q1=datanew[CAL_QUARTER==1,]
+
 
 # Divide into the Up-Bottom segments: ORG & PRIV
 datanew_priv=filter(datanew,CUSTOMER_SEGMENT=='PRIV')
@@ -65,113 +66,221 @@ datanew_org=filter(datanew,CUSTOMER_SEGMENT=='GOV' | CUSTOMER_SEGMENT=='SME'| CU
 datanew_org=subset(datanew_org,select=-c(CUSTOMER_TYPE,CAL_QUARTER))
 
 
-####################
-#### ORG UNITS  ####
-####################
+#*********************
+#**** ORG UNITS  *****
+#*********************
 
 # Ranking of Missing Values
 rankmissing = (sapply(datanew_org,function(x) mean(is.na(x))) %>%
                  sort())
-names_miss=names(rankmissing[which(rankmissing < 0.05)])
-myvars_leastmiss = names(datanew_org1) %in% names_miss 
-refined_org = datanew_org[myvars_leastmiss]
+names_miss=names(rankmissing[which(rankmissing < 0.15)])
+# some variables' NA are actually informative
+datanew_org$DISTRICT_OF_BUDAPEST[is.na(datanew_org$DISTRICT_OF_BUDAPEST)] = "OUTSIDE_BUDAPEST"
+datanew_org$TXN_TYPE[is.na(datanew_org$TXN_TYPE)] = "NOT_A_TRANSACTION"
+datanew_org$INSTRUMENT[is.na(datanew_org$INSTRUMENT)] = "NOT_A_TRANSACTION"
+datanew_org$SCOPE[is.na(datanew_org$SCOPE)] = "NOT_A_TRANSACTION"
+datanew_org$REGION[is.na(datanew_org$REGION)] = "NOT_A_TRANSACTION"
+datanew_org$BASE_CURRENCY_AMOUNT[is.na(datanew_org$BASE_CURRENCY_AMOUNT)] = "NOT_A_TRANSACTION"
+# Making Factor some variables
+datanew$DISTRICT_OF_BUDAPEST=as.factor(datanew$DISTRICT_OF_BUDAPEST)
 
-#############################
-### EXPLORATORY ANALYSIS ####
-#############################
+# Again Ranking of Missing Values
+rankmissing = (sapply(datanew_org,function(x) mean(is.na(x))) %>%
+                 sort())
+names_miss=names(rankmissing[which(rankmissing < 0.15)])
+refined_org=datanew_org[names_miss]
+# UPS - The var should be numeric; 6446 is numerical version of 'NOT_A_TRANSACTION'
+refined_org$BASE_CURRENCY_AMOUNT[which(refined_org$BASE_CURRENCY_AMOUNT=='NOT_A_TRANSACTION')]=NA
+refined_org$BASE_CURRENCY_AMOUNT=as.numeric(refined_org$BASE_CURRENCY_AMOUNT)
+refined_org$BASE_CURRENCY_AMOUNT=cut(refined_org$BASE_CURRENCY_AMOUNT,c(quantile(refined_org$BASE_CURRENCY_AMOUNT,na.rm = T)))
+refined_org$BASE_CURRENCY_AMOUNT=addNA(refined_org$BASE_CURRENCY_AMOUNT)
+# Converting all character vars into factors
+var_chr=names(refined_org[names(refined_org) %in% names(select_if(refined_org, is.character))])
+refined_org[var_chr]=lapply(refined_org[var_chr],factor)
+levels(refined_org$BASE_CURRENCY_AMOUNT)[is.na(levels(refined_org$BASE_CURRENCY_AMOUNT))] <- "NOT_A_TRANSACTION"
+refined_org$SC01_Amount_Exceding_250000__HUF_=factor(refined_org$SC01_Amount_Exceding_250000__HUF_)
+###################################
+### EXPLORATORY ANALYSIS - ORG ####
+###################################
 
-
-ggpairs(datanew,columns=c('SAR','NUM_CASES','CUSTOMER_FOR_DAYS'))
-ggpairs(datanew_Q1,columns=c('SAR','NUM_CASES','CUSTOMER_FOR_DAYS'))
-
-ggplot(datanew, aes(x = datanew$CAL_QUARTER, fill = datanew$SAR)) + 
+ggplot(refined_org, aes(x = refined_org$EVENT_MONTH, fill = refined_org$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 
-
-ggplot(datanew, aes(x = EVENT_MONTH, fill = datanew$SAR)) + 
+ggplot(refined_org, aes(x = SCENARIO, fill = refined_org$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 
-aggr_plot = aggr(datanew, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
-                  labels=names(datanew), cex.axis=.7, gap=3, 
+ggplot(refined_org, aes(x = TXN_TYPE, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = INSTRUMENT, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = REGION, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = SCOPE, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = BASE_CURRENCY_AMOUNT, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = RAISED_ON, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = ALERT_CUSTOMER_SEGMENT, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = PEP_FLAG, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = SPECIAL_ATTENTION_FLAG, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = BUSINESS_TYPE2, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = CUSTOMER_STATUS, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = TIME_PERIOD, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = CUSTOMER_REGION, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = DISTRICT_OF_BUDAPEST, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = COUNTRY_OF_RESIDENCE_abbrev, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = COUNTRY_OF_ORIGIN, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = STATUS, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = ORIGINAL_ACCOUNT_CURRENCY, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = CREDIT_DEBIT, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = ORIGINAL_ACCOUNT_CURRENCY, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggplot(refined_org, aes(x = SC01_Amount_Exceding_250000__HUF_, fill = refined_org$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+
+aggr_plot = aggr(refined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
+                  labels=names(refined_org), cex.axis=.7, gap=3, 
                   ylab=c("Histogram of missing data","Pattern"))
 
-# Missing Values
-data_missing=mice(data,m=5,meth='pmm',maxit=0,seed=500)
-summary(data_missing)
-densityplot(data_missing,~.) #put here a variable of interest #
-stripplot(data_missing,pch=20,cex=1.2)
+
+# Missing Values - Numerical
+mrefined_org=refined_org
+mrefined_org$NEW_ACCOUNT_BALANCE[is.na(mrefined_org$NEW_ACCOUNT_BALANCE)]=median(mrefined_org$NEW_ACCOUNT_BALANCE,na.rm = T)
+mrefined_org$Customer_Equals_Account[is.na(mrefined_org$Customer_Equals_Account)]=median(mrefined_org$Customer_Equals_Account, na.rm = T)
+
+mrefined_org$ORIGINAL_ACCOUNT_CURRENCY = as.character(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)
+  mrefined_org$ORIGINAL_ACCOUNT_CURRENCY[is.na(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)] = 'NOT_A_TRANSACTION'
+  mrefined_org$ORIGINAL_ACCOUNT_CURRENCY = factor(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)
+
+mrefined_org$CREDIT_DEBIT = as.character(mrefined_org$CREDIT_DEBIT)
+  mrefined_org$CREDIT_DEBIT[is.na(mrefined_org$CREDIT_DEBIT)] = 'NOT_A_TRANSACTION'
+  mrefined_org$CREDIT_DEBIT = factor(mrefined_org$CREDIT_DEBIT) 
+  
+mrefined_org$STATUS = as.character(mrefined_org$STATUS)
+  mrefined_org$STATUS[is.na(mrefined_org$STATUS)] = 'NOT_A_TRANSACTION'
+  mrefined_org$STATUS = factor(mrefined_org$STATUS) 
+  
+aggr(mrefined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
+                 labels=names(mrefined_org), cex.axis=.7, gap=3, 
+                 ylab=c("Histogram of missing data","Pattern"))
+
+mrefined_org1=mrefined_org[complete.cases(mrefined_org),]
+
+
+#refined_org_imp=mice(refined_org,maxit=0,seed=500)
+#summary(refined_org_imp)
+#densityplot(refined_org_imp,~NEW_ACCOUNT_BALANCE) #put here a variable of interest #
+#stripplot(data_missing,pch=20,cex=1.2)
 
 
 
-
-# CLUSTER ANALYSIS
-    # CLUSTER NONHIERARCHICAL - PRIV 
-datanew_num_priv=select_if(datanew_priv, is.numeric)
-
-
-
-
-# CLUSTER NONHIERARCHICAL - ORG
-datanew_num_org=select_if(datanew_org, is.numeric)
+### CLUSTER NONHIERARCHICAL - ORG ###
+mrefined_num_org=select_if(mrefined_org1, is.numeric)
 # K=5
-cluster_org1 = refined_org1[-c(23,24,25)] %>% select_if(is.numeric)
-cl5_org=clara(cluster_org1,5)
-refined_org1$labels_k5=cl5_org$clustering
-ggplot(refined_org1, aes(x = as.factor(refined_org1$labels_k5), fill = refined_org1$SAR)) + 
+cl5_org=clara(mrefined_num_org,5)
+mrefined_org$labels_k5=cl5_org$clustering
+ggplot(mrefined_org, aes(x = as.factor(mrefined_org$labels_k5), fill = mrefined_org$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 cl5_org$clusinfo
 summary(cl5_org)
 summary(silhouette(cl5_org))
 # K=4
-cl4_org=clara(cluster_org1,4)
-refined_org1$labels_k4=cl4_org$clustering
-ggplot(refined_org1, aes(x = as.factor(refined_org1$labels_k4), fill = refined_org1$SAR)) + 
+mrefined_org$labels_k5=NULL
+cl4_org=clara(mrefined_num_org,4)
+mrefined_org$labels_k4=cl4_org$clustering
+ggplot(mrefined_org, aes(x = as.factor(mrefined_org$labels_k4), fill = mrefined_org$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 cl4_org$clusinfo
 summary(cl4_org)
 summary(silhouette(cl4_org))
 # K=3
-cl3_org=clara(cluster_org1,3)
-refined_org1$labels_k3=cl3_org$clustering
-ggplot(refined_org1, aes(x = as.factor(refined_org1$labels_k3), fill = refined_org1$SAR)) + 
+mrefined_org$labels_k4=NULL
+cl3_org=clara(mrefined_num_org,3)
+mrefined_org$labels_k3=cl3_org$clustering
+ggplot(mrefined_org, aes(x = as.factor(mrefined_org$labels_k3), fill = mrefined_org$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 cl3_org$clusinfo
 summary(cl3_org)
 summary(silhouette(cl3_org))
+mrefined_org$labels_k3=NULL
 
-table_k3 <- table(datanew_org$SAR,datanew_priv$labels_k3)
+table_k3 <- table(mrefined_org$SAR,mrefined_org$labels_k3)
 prop.table(table_k3,2)
-table_k4 <- table(datanew_org$SAR,datanew_priv$labels_k4)
+table_k4 <- table(mrefined_org$SAR,mrefined_org$labels_k4)
 prop.table(table_k4,2)
-table_k5 <- table(datanew_org$SAR,datanew_priv$labels_k5)
+table_k5 <- table(mrefined_org$SAR,mrefined_org$labels_k5)
 prop.table(table_k5,2)
 perf_measures_org=list(cl3_org$objective,cl4_org$objective,cl5_org$objective)
 perf_measures_org
 
-by_k3=datanew_priv %>% group_by(datanew_priv$labels_k3) %>%
-  summarise(
-    mean=mean(NUM_ACCOUNTS),
-    SAR=mean(as.numeric(SAR))
-  )
-
-
-
-
-
 # Feature reduction - Boruta
 
-data2=data[complete.cases(data),]
-index_train=createDataPartition(data2$SAR,p=.70)
-data2_train=data2[unlist(index_train),]
+index_train=createDataPartition(mrefined_org1$SAR,p=.70)
+data_train=mrefined_org1[unlist(index_train),]
   #Use a meaningful set of explanatory vars
-data2_train=data2_train[c()]
+data_train=data_train[c(-1)]
 set.seed(123)
-boruta.train=Boruta(data2_train$SAR~., data = data2_train, doTrace = 2)
+boruta.train=Boruta(data_train$SAR~., data = data_train, doTrace = 2)
 print(boruta.train)
 plot(boruta.train, xlab = "", xaxt = "n")
 lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
@@ -180,3 +289,6 @@ names(lz) <- colnames(boruta.train$ImpHistory)
 Labels <- sort(sapply(lz,median))
 axis(side = 1,las=2,labels = names(Labels),
      at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
+boruta_for=getConfirmedFormula(boruta.train)
+
+glm(boruta_for,data = data_train, family = binomial)
