@@ -159,9 +159,13 @@ missing1<-newrefineddata[which(is.na(newrefineddata$ORIGINAL_ACCOUNT_CURRENCY))]
 # i think still impute because these guys have accounts still
 
 #function to calculate the mode of a variables
-Mode <- function(x) {
+Mode <- function(x, na.rm = FALSE) {
+  if(na.rm){
+    x = x[!is.na(x)]
+  }
+
   ux <- unique(x)
-  ux[which.max(tabulate(match(x, ux)))]
+  return(ux[which.max(tabulate(match(x, ux)))])
 }
 
 #impute new account BALANCE, status, orig acc currency and customer equals account
