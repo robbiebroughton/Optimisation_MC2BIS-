@@ -4,6 +4,7 @@
 
 rm(list=ls())
 library(ggplot2)
+library(Ridit)
 library(GGally)
 library(VIM)
 library(readr)
@@ -17,15 +18,24 @@ library(mice)
 library(caret)
 library(Boruta)
 library(cluster)
+## Ridit Function
+ridit_scores=function(y){
+  x = vector('numeric')
+  for (i in 1:length(y)) {
+    
+    x[i]=(sum(y[1:i])-sum(y[length(y):(i)]))
+  }
+  return(x)
+}
 
 # Load data properly
 setwd("C:/Users/orteg/Dropbox/MC2BIS/VS - OPT data")
-data<-fread("Hungarian_Data_updated_col_names_CSV_new_acc_bal_incl.csv",na.strings = c('',' ','NA'))
-original_data<-data[1:57383,]
+data=fread("Hungarian_Data_updated_col_names_CSV_new_acc_bal_incl.csv",na.strings = c('',' ','NA'))
+original_data=data[1:57383,]
 
 # Make one new variable - if customer branch and account branch are equal then 1 and if not then 0, otherwise NA
-original_data$Customer_Equals_Account<-ifelse(original_data$CUSTOMER_BRANCH==original_data$ACCOUNT_BRANCH,0,1)
-data<- subset(original_data, select=-c(EqualTo,Compound_ID,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,
+original_data$Customer_Equals_Account=ifelse(original_data$CUSTOMER_BRANCH==original_data$ACCOUNT_BRANCH,0,1)
+data= subset(original_data, select=-c(EqualTo,Compound_ID,Unique,REASON_FOR_CLOSURE,CUSTOMER_REGION,
                                        DESCRIPTION,CREATION_DATE,CREATION_DATE,LAST_UPDATED,EVENT_DATE,
                                        AGE_IN_DAYS,ACTION_NUM, TRANSACTION_ID,CREDIT_DEBIT_CODE, TXN_TYPE_DESC,
                                        ASSIGNED_TO,ASSIGNED_BY,ORIGINAL_CURRENCY_AMOUNT,ORIGINAL_CURRENCY,
@@ -35,7 +45,7 @@ data<- subset(original_data, select=-c(EqualTo,Compound_ID,Unique,REASON_FOR_CLO
                                        INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
 
 # Response Variable (SAR)
-n<-dim(data)[1]
+n=dim(data)[1]
 data$SAR= ifelse(data$CASE_STATUS=="Reported/Closed",1,0)
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Closed" )]=0
 data$SAR[with(data,is.na(data$SAR) & data$STATUS_NAME=="Linked Closed" )]=0
@@ -97,7 +107,7 @@ refined_org$BASE_CURRENCY_AMOUNT=addNA(refined_org$BASE_CURRENCY_AMOUNT)
 # Converting all character vars into factors
 var_chr=names(refined_org[names(refined_org) %in% names(select_if(refined_org, is.character))])
 refined_org[var_chr]=lapply(refined_org[var_chr],factor)
-levels(refined_org$BASE_CURRENCY_AMOUNT)[is.na(levels(refined_org$BASE_CURRENCY_AMOUNT))] <- "NOT_A_TRANSACTION"
+levels(refined_org$BASE_CURRENCY_AMOUNT)[is.na(levels(refined_org$BASE_CURRENCY_AMOUNT))] = "NOT_A_TRANSACTION"
 refined_org$SC01_Amount_Exceding_250000__HUF_=factor(refined_org$SC01_Amount_Exceding_250000__HUF_)
 ###################################
 ### EXPLORATORY ANALYSIS - ORG ####
@@ -199,12 +209,16 @@ aggr_plot = aggr(refined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TR
                   labels=names(refined_org), cex.axis=.7, gap=3, 
                   ylab=c("Histogram of missing data","Pattern"))
 
+#####################
+# MISSING VALUES ####
+#####################
 
 # Missing Values - Numerical
 mrefined_org=refined_org
 mrefined_org$NEW_ACCOUNT_BALANCE[is.na(mrefined_org$NEW_ACCOUNT_BALANCE)]=median(mrefined_org$NEW_ACCOUNT_BALANCE,na.rm = T)
 mrefined_org$Customer_Equals_Account[is.na(mrefined_org$Customer_Equals_Account)]=median(mrefined_org$Customer_Equals_Account, na.rm = T)
 
+# Missing Values - Category
 mrefined_org$ORIGINAL_ACCOUNT_CURRENCY = as.character(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)
   mrefined_org$ORIGINAL_ACCOUNT_CURRENCY[is.na(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)] = 'NOT_A_TRANSACTION'
   mrefined_org$ORIGINAL_ACCOUNT_CURRENCY = factor(mrefined_org$ORIGINAL_ACCOUNT_CURRENCY)
@@ -229,24 +243,106 @@ mrefined_org1=mrefined_org[complete.cases(mrefined_org),]
 #densityplot(refined_org_imp,~NEW_ACCOUNT_BALANCE) #put here a variable of interest #
 #stripplot(data_missing,pch=20,cex=1.2)
 
+#################
+# RIDIT SCORES ##
+#################
+
+# Ridit Scores for tab1
+tab1=prop.table(table(mrefined_org1$SAR,mrefined_org1$SCENARIO),2) %>%
+  data.frame() %>% 
+  filter(Var1==1) %>% 
+  arrange(desc(Freq))
+colnames(tab1) = c("Var1", "SCENARIO", "Freq_SAR")  
+
+tab1_2=prop.table(table(mrefined_org1$SCENARIO)) %>%
+  data.frame()
+colnames(tab1_2) = c('SCENARIO', 'Freq')
+joined_tab1=left_join(tab1,tab1_2, by = 'SCENARIO')
+
+ridit_tab1=ridit_scores(joined_tab1$Freq) %>% data.frame()
+colnames(ridit_tab1)='Ridit_Scores'
+ridit_tab1=bind_cols(joined_tab1,ridit_tab1) %>% select(c('SCENARIO','Ridit_Scores'))
+colnames(ridit_tab1)=c('SCENARIO','RS_SCENARIO')
+left_join(mrefined_org1,ridit_tab1,by = 'SCENARIO')
+# Ridit Scores for tab2
+tab2=prop.table(table(mrefined_org1$SAR,mrefined_org1$EVENT_MONTH),2) %>%
+  data.frame() %>% 
+  filter(Var1==1) %>% 
+  arrange(desc(Freq))
+colnames(tab1) = c("Var1", "EVENT_MONTH", "Freq_SAR")  
+
+tab1_2=prop.table(table(mrefined_org1$SCENARIO)) %>%
+  data.frame()
+colnames(tab1_2) = c('SCENARIO', 'Freq')
+joined_tab1=left_join(tab1,tab1_2, by = 'SCENARIO')
+
+ridit_tab1=ridit_scores(joined_tab1$Freq) %>% data.frame()
+colnames(ridit_tab1)='Ridit_Scores'
+ridit_tab1=bind_cols(joined_tab1,ridit_tab1) %>% select(c('SCENARIO','Ridit_Scores'))
+colnames(ridit_tab1)=c('SCENARIO','RS_SCENARIO')
+left_join(mrefined_org1,ridit_tab1,by = 'SCENARIO')
+###
+
+tab2=table(mrefined_org1$SAR,mrefined_org1$EVENT_MONTH)
+tab3=table(mrefined_org1$SAR,mrefined_org1$BUSINESS_TYPE2)
+tab4=table(mrefined_org1$SAR,mrefined_org1$COUNTRY_OF_RESIDENCE_abbrev)
+tab5=table(mrefined_org1$SAR,mrefined_org1$TXN_TYPE)
+tab6=table(mrefined_org1$SAR,mrefined_org1$INSTRUMENT)
+tab7=table(mrefined_org1$SAR,mrefined_org1$SCOPE)
+tab8=table(mrefined_org1$SAR,mrefined_org1$REGION)
+tab9=table(mrefined_org1$SAR,mrefined_org1$BASE_CURRENCY_AMOUNT)
+tab10=table(mrefined_org1$SAR,mrefined_org1$RAISED_ON)
+tab11=table(mrefined_org1$SAR,mrefined_org1$COUNTRY_OF_ORIGIN)
+tab12=table(mrefined_org1$SAR,mrefined_org1$ALERT_CUSTOMER_SEGMENT)
+tab13=table(mrefined_org1$SAR,mrefined_org1$PEP_FLAG)
+tab14=table(mrefined_org1$SAR,mrefined_org1$SPECIAL_ATTENTION_FLAG)
+tab15=table(mrefined_org1$SAR,mrefined_org1$CUSTOMER_STATUS)
+tab16=table(mrefined_org1$SAR,mrefined_org1$CUSTOMER_REGION)
+tab17=table(mrefined_org1$SAR,mrefined_org1$CUSTOMER_SEGMENT)
+tab18=table(mrefined_org1$SAR,mrefined_org1$SC01_Amount_Exceding_250000__HUF_)
+tab19=table(mrefined_org1$SAR,mrefined_org1$TIME_PERIOD)
+tab20=table(mrefined_org1$SAR,mrefined_org1$ORIGINAL_ACCOUNT_CURRENCY)
+tab21=table(mrefined_org1$SAR,mrefined_org1$CREDIT_DEBIT)
+tab22=table(mrefined_org1$SAR,mrefined_org1$STATUS)
+tab23=table(mrefined_org1$SAR,mrefined_org1$DISTRICT_OF_BUDAPEST)
+
+
+hi=ridit(tab1,g=2, ref = 'SC01')$MeanRidit
+
+mrefined_org1$EVENT_MONTH=ridit(tab2,g=2, ref = 'January')$MeanRidit
+mrefined_org1$BUSINESS_TYPE2_2=ridit(tab3,g=2)
+mrefined_org1$COUNTRY_OF_RESIDENCE_abbrev_2=ridit(tab4,g=2)
+mrefined_org1$TXN_TYPE_2=ridit(tab5,g=2)
+mrefined_org1$COUNTRY_OF_ORIGIN_2=ridit(tab6,g=2)
+mrefined_org1$CUSTOMER_REGION_2=ridit(tab7,g=2)
+mrefined_org1$TIME_PERIOD_2=ridit(tab8,g=2)
+mrefined_org1$STATUS=ridit(tab9,g=2)
+mrefined_org1$DISTRICT_OF_BUDAPEST=ridit(tab10,g=2)
+mrefined_org1$SECOND_PARTY_COUNTRY=ridit(tab11,g=2)
+
+
+mrefined_org1$SCENARIO.levels
+
+
+
 
 
 ### CLUSTER NONHIERARCHICAL - ORG ###
 mrefined_num_org=select_if(mrefined_org1, is.numeric)
 # K=5
 cl5_org=clara(mrefined_num_org,5)
-mrefined_org$labels_k5=cl5_org$clustering
-ggplot(mrefined_org, aes(x = as.factor(mrefined_org$labels_k5), fill = mrefined_org$SAR)) + 
+cluster_df=mrefined_num_org
+cluster_df$labels_k5=cl5_org$clustering
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k5), fill = mrefined_org1$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 cl5_org$clusinfo
 summary(cl5_org)
 summary(silhouette(cl5_org))
 # K=4
-mrefined_org$labels_k5=NULL
 cl4_org=clara(mrefined_num_org,4)
-mrefined_org$labels_k4=cl4_org$clustering
-ggplot(mrefined_org, aes(x = as.factor(mrefined_org$labels_k4), fill = mrefined_org$SAR)) + 
+cluster_df$labels_k4=cl4_org$clustering
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k4), fill = mrefined_org1$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
 cl4_org$clusinfo
@@ -264,11 +360,11 @@ summary(cl3_org)
 summary(silhouette(cl3_org))
 mrefined_org$labels_k3=NULL
 
-table_k3 <- table(mrefined_org$SAR,mrefined_org$labels_k3)
+table_k3 = table(mrefined_org$SAR,mrefined_org$labels_k3)
 prop.table(table_k3,2)
-table_k4 <- table(mrefined_org$SAR,mrefined_org$labels_k4)
+table_k4 = table(mrefined_org$SAR,mrefined_org$labels_k4)
 prop.table(table_k4,2)
-table_k5 <- table(mrefined_org$SAR,mrefined_org$labels_k5)
+table_k5 = table(mrefined_org$SAR,mrefined_org$labels_k5)
 prop.table(table_k5,2)
 perf_measures_org=list(cl3_org$objective,cl4_org$objective,cl5_org$objective)
 perf_measures_org
@@ -283,12 +379,23 @@ set.seed(123)
 boruta.train=Boruta(data_train$SAR~., data = data_train, doTrace = 2)
 print(boruta.train)
 plot(boruta.train, xlab = "", xaxt = "n")
-lz<-lapply(1:ncol(boruta.train$ImpHistory),function(i)
+lz=lapply(1:ncol(boruta.train$ImpHistory),function(i)
   boruta.train$ImpHistory[is.finite(boruta.train$ImpHistory[,i]),i])
-names(lz) <- colnames(boruta.train$ImpHistory)
-Labels <- sort(sapply(lz,median))
+names(lz) = colnames(boruta.train$ImpHistory)
+Labels = sort(sapply(lz,median))
 axis(side = 1,las=2,labels = names(Labels),
      at = 1:ncol(boruta.train$ImpHistory), cex.axis = 0.7)
 boruta_for=getConfirmedFormula(boruta.train)
 
-glm(boruta_for,data = data_train, family = binomial)
+featlist=attStats(boruta.train)
+featlist1=subset(featlist,select = 'medianImp')
+top10=mutate(left, rank = rank(-featlist$medianImp))
+class(top10)
+
+fit1=glm(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + NEW_ACCOUNT_BALANCE,
+         data = data_train, family = binomial)
+p=predict(fit1, data_train , type='response')
+
+ggplot(data_train, aes(x=p)) + 
+  geom_density(aes(group=SAR, colour=SAR, fill=SAR), alpha=0.3)
+
