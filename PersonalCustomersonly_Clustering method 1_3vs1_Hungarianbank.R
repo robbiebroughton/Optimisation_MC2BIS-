@@ -48,7 +48,7 @@ refined_per$BASE_CURRENCY_AMOUNT[which(refined_per$BASE_CURRENCY_AMOUNT=='NOT_A_
 refined_per$BASE_CURRENCY_AMOUNT=as.numeric(refined_per$BASE_CURRENCY_AMOUNT)
 
 refined_per$BASE_CURRENCY_AMOUNT=cut(refined_per$BASE_CURRENCY_AMOUNT,c(quantile(refined_per$BASE_CURRENCY_AMOUNT,prob = seq(0,1, length.out = 11), na.rm=T,type = 5)))
-              
+unique(refined_per$BASE_CURRENCY_AMOUNT)
 
 #cut numeric variable into intervals based on quantiles,
 refined_per$BASE_CURRENCY_AMOUNT=addNA(refined_per$BASE_CURRENCY_AMOUNT)
@@ -121,21 +121,20 @@ mrefined_per$CUSTOMER_REGION[is.na(mrefined_per$CUSTOMER_REGION)]<-"OUTSIDE_HUNG
 
 sum(is.na(mrefined_per$CUSTOMER_REGION))#now 0
 
-# # now convert all character vars to factors and all continuous variables to numeric or int
-
+######-----------------------------------------#########################
+####now convert all character vars to factors and all continuous variables to numeric or int####
+#####-------------------------------------------##############################
 lapply(mrefined_per, class)#obtained all classes, now check what we need to be factors and numeric!
 colnames(mrefined_per) #see column indices for specifying class types
-
-
 
 mrefined_per[,c(1,2,4,5,6,7,8,9,10,11,13,14,15,19,20,22,23,24,25,27,28,29)]<-as.data.frame(sapply(mrefined_per[,c(1,2,4,5,6,7,8,9,10,11,13,14,15,19,20,22,23,24,25,27,28,29)], as.factor))
 mrefined_per[,c(3,12,16,17,18,21,26)] <- as.data.frame(sapply(mrefined_per[,c(3,12,16,17,18,22,27)], as.numeric))
 #base currency (variable no.8) has missing values, so didnt convert into numeric yet- converted into factor type!
-
+unique(mrefined_per$BASE_CURRENCY_AMOUNT)
 
 
 classvars<- as.data.frame(lapply(mrefined_per, class))
-
+classvars
 #plot amount of missing values in each variable
 aggr_plot = aggr(mrefined_per, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
                  labels=names(mrefined_per), cex.axis=.7, gap=3, 
@@ -145,7 +144,7 @@ aggr_plot = aggr(mrefined_per, col=c('navyblue','red'), numbers=TRUE, sortVars=T
 
 #Feature reduction at this stage may not worthy as we have 30 variables which we can use to build a model by converting them to ridit scores
 mrefined_per1<-mrefined_per
-sum(is.na(mrefined_per)) #0 missing values!
+sum(is.na(mrefined_per1)) #0 missing values!
 
 #################
 # RIDIT SCORES ##
@@ -297,6 +296,7 @@ mrefined_per1<-left_join(mrefined_per1,ridit_tab6,by = 'REGION')
 
 
 # 7.BASE_CURRENCY_AMOUNT Ridit Scores for tab7
+
 tab7=prop.table(table(mrefined_per1$SAR,mrefined_per1$BASE_CURRENCY_AMOUNT),2) %>%
   data.frame() %>% 
   filter(Var1==1) %>% 
@@ -602,7 +602,11 @@ mrefined_per1<-left_join(mrefined_per1,ridit_tab22,by = 'STATUS')
 mrefined_per1
 sum(is.na(mrefined_per1))
 
+lapply(mrefined_per1, class)
 
+#Sample demo for Ridit scores
+tapply(mrefined_per1$RS_SCENARIO,mrefined_per1$SCENARIO, FUN = function(x) unique(x))
+#sample demo
 
 
 #####################################
@@ -611,23 +615,23 @@ sum(is.na(mrefined_per1))
 
 mrefined_num_per=select_if(mrefined_per1, is.numeric)
 mrefined_num_per=scale(mrefined_num_per) %>% data.frame() #scale all variables before clustering by Euclidean dist
+sum(is.na(mrefined_num_per))#so columns deleted are having missing values
+mrefined_num_per<- mrefined_num_per[,apply(mrefined_num_per,2,function(x) !any(is.na(x)))]
+
 
 # K=5
 
-cl5_per=clara(mrefined_num_per,5, samples = 50, rngR = T) #sampsize = 40 + 2*5= 50
+set.seed(123);cl5_per=clara(mrefined_num_per,5, samples = 50, rngR = T,correct.d = F) #sampsize = 40 + 2*5= 50
 cluster_df=mrefined_num_per
-cluster_df$labels_k5=cl5_per$clustering
+cluster_df$labels_k5=cl5_per$clustering #assign cluster values for each obs in cluster df
 ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k5), fill = mrefined_per1$SAR)) + 
   geom_bar(position = "fill") +
   theme(axis.text.x = element_text(angle = 90))
-
-
 #so 5 clusters have decreasing values of SAR
 
 ######trials###########
 #try with higher sampling size
-
-cl5_per2=clara(mrefined_num_per,5, samples = 50, sampsize = 250,rngR = T) #sampsize = 40 + 2*5= 50
+set.seed(123);cl5_per2=clara(mrefined_num_per,5, samples = 50, sampsize = 250,rngR = T,correct.d = F) #sampsize = 40 + 2*5= 50
 cluster_df2=mrefined_num_per
 cluster_df2$labels_k5=cl5_per2$clustering
 ggplot(cluster_df2, aes(x = as.factor(cluster_df2$labels_k5), fill = mrefined_per1$SAR)) + 
@@ -642,12 +646,13 @@ cl5_per$clusinfo
 cluster_df_tNA<-data.frame(t(na.omit(t(cluster_df))))
 fviz_cluster(cl5_per,stand = FALSE, geom = "point",
              ellipse.type = "norm")
+
 cl5_per$medoids
 summary(cl5_per)
 summary(silhouette(cl5_per))
 
 # K=4
-cl4_per=clara(mrefined_num_per, 4 , samples = 50, rngR = T)
+cl4_per=clara(mrefined_num_per, 4 , samples = 50, rngR = T,correct.d = F)
 cluster_df$labels_k4=cl4_per$clustering
 ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k4), fill = mrefined_per1$SAR)) + 
   geom_bar(position = "fill") +
@@ -659,7 +664,7 @@ summary(cl4_per)
 summary(silhouette(cl4_per))
 
 # CLARA - K=3
-cl3_per=clara(mrefined_num_per, 3 , samples = 50, rngR = T)
+cl3_per=clara(mrefined_num_per, 3 , samples = 50, rngR = T,correct.d = F)
 cluster_df$labels_k3=cl3_per$clustering
 ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k3), fill = mrefined_per1$SAR)) + 
   geom_bar(position = "fill") +
@@ -671,34 +676,173 @@ summary(cl3_per)
 summary(silhouette(cl3_per))
 fviz_cluster(cl3_per,stand = FALSE, geom = "point",
              frame.type = "norm")
+fviz_cluster(cl3_per,stand = FALSE, geom = "point",
+             frame.type = "norm",choose.vars = c(PCA$scores[,"Comp.3"],PCA$scores[,"Comp.4"]))
 
-# Kmeans Sparse 
+
+# CLARA - K=2
+cl2_per=clara(mrefined_num_per, 2 , samples = 50, rngR = T,correct.d = F)
+cluster_df$labels_k2=cl2_per$clustering
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k2), fill = mrefined_per1$SAR)) + 
+  geom_bar(position = "fill") +
+  theme(axis.text.x = element_text(angle = 90))
+cl2_per$clusinfo
+profile_cl2=cl2_per$medoids
+cl2_per$clustering
+summary(cl2_per)
+summary(silhouette(cl2_per))
+fviz_cluster(cl2_per,stand = FALSE, geom = "point",
+             frame.type = "norm")
 
 
-#
-
+# Comparing Cluster solutions
+table_k2 = table(mrefined_per1$SAR,cluster_df$labels_k2)
+prop.table(table_k2,2)
 table_k3 = table(mrefined_per1$SAR,cluster_df$labels_k3)
 prop.table(table_k3,2)
 table_k4 = table(mrefined_per1$SAR,cluster_df$labels_k4)
 prop.table(table_k4,2)
 table_k5 = table(mrefined_per1$SAR,cluster_df$labels_k5)
 prop.table(table_k5,2)
-perf_measures_per=list(cl3_per$objective,cl4_per$objective,cl5_per$objective)
+perf_measures_per=list(cl2_per$objective,cl3_per$objective,cl4_per$objective,cl5_per$objective)
 perf_measures_per
-#5clusters seems optimal by objective function (minimized) 
+# 4.6, 4.2, 4.17, 3.9
+# Not clear as objective function decreases with increase in no. of clusters 
 
-# !!!!!!! Optimal number of Clusters !!! CAREFUL it takes a lot time
-fviz_nbclust(mrefined_num_per, clara, method = "wss", k.max = 6) +
-  +   geom_vline(xintercept = 3, linetype = 2)
-#check sparse
-clusGap(mrefined_num_per, clara, method = "gap_stat", k.max = 4, B = 10) +
-  geom_vline(xintercept = 3, linetype = 2)
+#Try GAP Statistic
+#!!!!!!!!!! Kmeans Sparse - !!! TIME COMPLEX - tuning paramter 2.2485~2.25
+set.seed(123); smpl_mrefined_num_per=mrefined_num_per[sample(1:nrow(mrefined_num_per),5000),] #sample of 5000 observations
+sum(is.na(smpl_mrefined_num_per))
+
+#GAP Statistic is more reliable
+gap_stat= clusGap(mrefined_num_per, clara, K.max = 5, B = 5)
+
 fviz_gap_stat(gap_stat)
 
+#As per plot, the gap statistics bends after k=2, so probably is one good option
+
+
+#Among 3,4 and 5 , we could choose 5 clusters as optimal solution both by distinguishability by PC1 and Pc2 and also by least objective function.
+fviz_cluster(cl2_per,stand = FALSE, geom = "point",
+             ellipse.type = "norm")
+
+
+#To understand dim1 and dim2 in fviz_cluster which are PC1 and PC2, lets know what these principal components are!
+#PC1:
+# PCR (standardized data)
+PCA <- princomp(mrefined_num_per)
+summary(PCA)
+#As data is standardized, then you should simply look at the first principal axis (rotation in the R terminology) and select variables with highest absolute values.
+PCA$loadings
+biplot(PCA,choices = 1:2)
+biplot(PCA,choices = 3:4)
+#Pc's major contributing variables with loading cutoff of 0.3(arbitrary for convenience in interpretation)
+#PC1: f(Time Period, Int/Dom,Client/Ext,Cash/Wire, C/W : I/D/Elekt/Conversion,Amount)
+
+####XXXXXXXXX    PC2: f(negative((PEP,Business type2- HH/NR/NF)) XXXXXXXXXX #########
+     
+
+#Cluster 1 (red) profile: 
+# More susceptible group: low PC1 : low ridit_tabs 15,6,5,4,3,7 => low (<=0)
+# 5 : Monthly/Daily, Not a Transac(by I/D,C/E), Not a Transac and Elektr, 10^7-^9:^6 and Not a transac ones 
+#=> removing Not a transac redundant values 
+##########Important############
+#**Cluster 1 (Riditscore<=0)=  Monthly/Daily/Weekly, Not a Transaction, Txn_Type = Not_a_transaction/Elektr, BASE_CURRENCY_AMOUNT in the slabs (6.25e+07,4.25e+09] and (3.07e+06,8.37e+06]
+#pc1
+ridit_tab15
+ridit_tab6
+ridit_tab5
+ridit_tab4
+ridit_tab3
+ridit_tab7
+#pc2
+ridit_tab9
+ridit_tab11
+
+#Cluster 2,3 and 4 : high PC1 than 5
+#Cluster 1 profile:
+#Low Susceptible group: high PC1 and high PC2: 
+#a)high tabs 15,6,5,4,3,7 
+#b)=> Weekly/For each trans rec, Domestic and Int,Client and ext,,Wire and Cash), atut__kp__konv, other 8 ranges of base curr amount 
+#b) and low (as structural loadings are negative) tabs on  9,11 and Customer for Days
+# Cluhigh PC2 => PEP Y, Non-residential and Low Customer For days value
+##########Important############
+#**Cluster 1: alerts other than Cluster 5 where PEP Y, Non-residential and Low Customer For days value
+#**Cluster 2,3,4: alerts other than Clusters 1 and 5
+#Not much understandable difference between clusters 2,3 and 4. So stick with 3 clusters only.
+
+
+###Cluster profiles in summary based on 5 cluster solution and PC1 and PC2 values#
+##################################################################################
+
+#**Cluster 5 (high SAR Susceptible) =  Monthly/Daily, Not a Transaction and Elektr transactions in the range of 10^7-^9 and (3-8.37)*10^6**
+#**Cluster 1 (medium SAR Susceptible): alerts other than Cluster 5 where PEP Y, Non-residential and Low Customer For days value
+#**Cluster 2,3,4 (low SAR Susceptible): alerts other than Clusters 1 and 5 #question to be answered
+
+####################################################################################
+
+
+#So in summary, Cluster 1 and 2 it is as follows:
+
+
+
+#**Cluster 1 personal (high SAR Susceptible) 
+ridit_tab15
+ridit_tab6
+ridit_tab5
+ridit_tab4
+ridit_tab3
+ridit_tab7
+#Monthly/Daily/Weekly, Not a Transaction, Txn_Type = Not_a_transaction/Elektr, BASE_CURRENCY_AMOUNT in the slabs (6.25e+07,4.25e+09] and (3.07e+06,8.37e+06]
+group1_per<- mrefined_num_per[which(mrefined_num_per$RS_TIME_PERIOD<=0 & mrefined_num_per$RS_REGION<=0 & mrefined_num_per$RS_TXN_TYPE<=0 & mrefined_num_per$RS_BASE_CURRENCY_AMOUNT<=0),]
+
+group2_per<- mrefined_num_per[which(!(mrefined_num_per$RS_TIME_PERIOD<=0 & mrefined_num_per$RS_REGION<=0 & mrefined_num_per$RS_TXN_TYPE<=0 & mrefined_num_per$RS_BASE_CURRENCY_AMOUNT<=0)),]
+
+
+group1_per
+sum(is.na(mrefined_num_per))
+sum(is.na(group1_per))
+sum(is.na(group2_per))
 
 
 
 
+#choose test dataset
+
+
+
+
+
+
+
+
+
+
+# !!!!!!! Optimal number of Clusters !!! CAREFUL it takes a lot time
+fviz_nbclust(mrefined_num_per, clara, method = "wss", k.max = 5) +
+  +   geom_vline(xintercept = 3, linetype = 2)
+#******doesnt work*******###
+
+#******doesnt work*******###
+#!!!!!!!!!! Kmeans Sparse - !!! TIME COMPLEX - tuning paramter 2.2485~2.25
+set.seed(123); smpl_mrefined_num_per=mrefined_num_per[sample(1:nrow(mrefined_num_per),5000),] #sample of 5000 observations
+sum(is.na(smpl_mrefined_num_per))
+
+kperm<-KMeansSparseCluster.permute(smpl_mrefined_num_per, K=3, nperms = 5)
+kperm
+km_cl3_per = KMeansSparseCluster(mrefined_num_per, K = 3, wbounds = kperm$bestw)
+km_cl3_per[[1]]$ws
+fviz_cluster(list(data = mrefined_num_per, cluster = km_cl3_per[[1]]$Cs ),stand = FALSE, geom = "point",
+             frame.type = "norm")
+
+cluster_df$labels_km_k3=km_cl3_per[[1]]$Cs
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_km_k3), fill = mrefined_per$SAR)) + 
+  geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 90))
+table_km_k3 = table(mrefined_per$SAR,cluster_df$labels_km_k3) %>%
+  prop.table(2)
+
+df = data.frame(unlist(attributes(km_cl3_per[[1]]$ws)),km_cl3_per[[1]]$ws) %>% filter(km_cl3_per[[1]]$ws >0)
+colnames(df)=c('Importance','Feature')
 
 
 
