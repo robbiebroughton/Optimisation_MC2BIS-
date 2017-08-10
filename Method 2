@@ -1,14 +1,14 @@
 ######################################
 #### DATA LOADING & PREPROCESSING ####
 ######################################
-
 rm(list=ls())
+library(xlsx)
+library(RSKC)
 library(sparcl)
 library(factoextra)
 library(cluster)
 library(NbClust)
 library(ggplot2)
-library(Ridit)
 library(GGally)
 library(VIM)
 library(readr)
@@ -22,7 +22,8 @@ library(mice)
 library(caret)
 library(Boruta)
 library(cluster)
-
+library(tibble)
+options(java.parameters = "-Xmx50000m")
 # Ridit Function
 ridit_scores=function(y){
   x = vector('numeric')
@@ -37,9 +38,25 @@ Mode <- function(x, na.rm = FALSE) {
   if(na.rm){
     x = x[!is.na(x)]
   }
-  
   ux <- unique(x)
   return(ux[which.max(tabulate(match(x, ux)))])
+}
+# Density GG Function
+density_gg = function (df,a,b){
+  ggplot(df,aes(x = a)) + geom_density(aes(group = b, colour = b, fill = b), alpha = 0.3)
+}
+stacked_gg = function (df,a,b){
+  ggplot(df, aes(x = a, fill = b)) + 
+    geom_bar(position = "fill") +
+    theme(axis.text.x = element_text(angle = 90))
+}
+
+# Log adjusted for integer variables Function
+log_int = function(x){
+  ifelse(x==0,-1,log(x))
+}
+log_neg = function(x){
+  ifelse(x < 1 & x > -1,0,ifelse(x<0,-log(abs(x)),log(x)))
 }
 # Load data properly
 setwd("C:/Users/orteg/Dropbox/MC2BIS/VS - OPT data")
@@ -84,9 +101,12 @@ datanew_priv=filter(datanew,CUSTOMER_SEGMENT=='PRIV')
 datanew_org=filter(datanew,CUSTOMER_SEGMENT=='GOV' | CUSTOMER_SEGMENT=='SME'| CUSTOMER_SEGMENT=='REG')
 datanew_org=subset(datanew_org,select=-c(CUSTOMER_TYPE,CAL_QUARTER))
 
-###############################
-# MISSING VALUES 1st PART #####
-###############################
+
+
+
+##################################################
+# MISSING VALUES & VARIABLE TRANSF. 1st PART #####
+##################################################
 
 # Ranking of Missing Values
 rankmissing = (sapply(datanew_org,function(x) mean(is.na(x))) %>%
@@ -116,128 +136,11 @@ names_miss2=names(rankmissing2[which(rankmissing2 < 0.15)])
 refined_org=datanew_org[names_miss2]
 
 
-###################################
-### EXPLORATORY ANALYSIS - ORG ####
-###################################
 
-# Continous Vars 
-# Vars that need transformation for better viz (right-skewed; e.g log) : NUM_CASES, NEW_ACCOUNT_BALANCE,
-  # NUM_ACCOUNTS, CUSTOMER_FOR_DAYS
-ggplot(refined_org, aes(x=refined_org$RISK_SCORE_1)) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
+#################################################
+# MISSING VALUES & VARIABLE TRANSF. 2nd PART ####
+#################################################
 
-ggplot(refined_org, aes(x=refined_org$RISK_SCORE_2)) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
-
-ggplot(refined_org, aes(x=refined_org$NUM_CASES)) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
-
-ggplot(refined_org, aes(x=refined_org$NEW_ACCOUNT_BALANCE)) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
-
-ggplot(refined_org, aes(x=refined_org$NUM_ACCOUNTS )) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
-
-ggplot(refined_org, aes(x= refined_org$CUSTOMER_FOR_DAYS )) + 
-  geom_density(aes(group=refined_org$SAR, colour=refined_org$SAR, fill=refined_org$SAR), alpha=0.3)
-
-
-# Categorical Vars
-ggplot(refined_org, aes(x = refined_org$EVENT_MONTH, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = SCENARIO, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = TXN_TYPE, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = INSTRUMENT, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = REGION, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = SCOPE, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = BASE_CURRENCY_AMOUNT, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = RAISED_ON, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = PEP_FLAG, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = SPECIAL_ATTENTION_FLAG, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = BUSINESS_TYPE2, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = CUSTOMER_STATUS, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = TIME_PERIOD, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = CUSTOMER_REGION, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = DISTRICT_OF_BUDAPEST, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = COUNTRY_OF_RESIDENCE_abbrev, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = COUNTRY_OF_ORIGIN, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = STATUS, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = ORIGINAL_ACCOUNT_CURRENCY, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = CUSTOMER_SEGMENT, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = SC01_Amount_Exceding_250000__HUF_, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggplot(refined_org, aes(x = refined_org$Customer_Equals_Account, fill = refined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-aggr_plot = aggr(refined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
-                  labels=names(refined_org), cex.axis=.7, gap=3, 
-                  ylab=c("Histogram of missing data","Pattern"))
-
-#####################
-# MISSING VALUES ####
-#####################
 mrefined_org=refined_org
 
 # Missing Values - Numerical: Using Median
@@ -275,28 +178,104 @@ mrefined_org$COUNTRY_OF_RESIDENCE_abbrev = as.character(mrefined_org$COUNTRY_OF_
   mrefined_org$COUNTRY_OF_RESIDENCE_abbrev[is.na(mrefined_org$COUNTRY_OF_RESIDENCE_abbrev)] = Mode_COUNTRY_OF_ORIGIN
   mrefined_org$COUNTRY_OF_RESIDENCE_abbrev = factor(mrefined_org$COUNTRY_OF_RESIDENCE_abbrev)  
   
-
+# 
 mrefined_org=mrefined_org[complete.cases(mrefined_org),]
 
-
+mrefined_org$logint_NUM_ACCOUNTS = log_int(mrefined_org$NUM_ACCOUNTS)
+mrefined_org$logint_NUM_CASES = log_int(mrefined_org$NUM_CASES)
+mrefined_org$logint_CUSTOMER_FOR_DAYS = log_int(mrefined_org$CUSTOMER_FOR_DAYS)
+mrefined_org$logneg_NEW_ACCOUNT_BALANCE = log_neg(mrefined_org$NEW_ACCOUNT_BALANCE)
 #refined_org_imp=mice(refined_org,maxit=0,seed=500)
 #summary(refined_org_imp)
 #densityplot(refined_org_imp,~NEW_ACCOUNT_BALANCE) #put here a variable of interest #
 #stripplot(data_missing,pch=20,cex=1.2)
 
-#################
-# RIDIT SCORES ##
-#################
+
+
+###################################
+### EXPLORATORY ANALYSIS - ORG ####
+###################################
+
+# Continous Vars 
+# Vars that need transformation for better viz (right-skewed; e.g log) : NUM_CASES, NEW_ACCOUNT_BALANCE,
+# NUM_ACCOUNTS, CUSTOMER_FOR_DAYS
+
+density_gg(mrefined_org,mrefined_org$RISK_SCORE_1,mrefined_org$SAR)
+
+density_gg(mrefined_org,mrefined_org$RISK_SCORE_2,mrefined_org$SAR)
+
+density_gg(mrefined_org,mrefined_org$NUM_CASES,mrefined_org$SAR)
+  density_gg(mrefined_org,mrefined_org$logint_NUM_CASES,mrefined_org$SAR)
+
+density_gg(mrefined_org,mrefined_org$NEW_ACCOUNT_BALANCE,mrefined_org$SAR)
+  density_gg(mrefined_org,mrefined_org$logneg_NEW_ACCOUNT_BALANCE,mrefined_org$SAR)
+
+density_gg(mrefined_org,mrefined_org$NUM_ACCOUNTS,mrefined_org$SAR)
+  density_gg(mrefined_org,mrefined_org$logint_NUM_ACCOUNTS,mrefined_org$SAR)
+
+density_gg(mrefined_org,mrefined_org$CUSTOMER_FOR_DAYS,mrefined_org$SAR)
+  density_gg(mrefined_org,mrefined_org$logint_CUSTOMER_FOR_DAYS,mrefined_org$SAR)
+
+# Categorical Vars
+stacked_gg(mrefined_org,mrefined_org$EVENT_MONTH,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$SCENARIO,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$TXN_TYPE,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$INSTRUMENT,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$REGION,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$SCOPE,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$BASE_CURRENCY_AMOUNT,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$RAISED_ON,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$PEP_FLAG,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$SPECIAL_ATTENTION_FLAG,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$BUSINESS_TYPE2,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$CUSTOMER_STATUS,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$TIME_PERIOD,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$CUSTOMER_REGION,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$DISTRICT_OF_BUDAPEST,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$COUNTRY_OF_RESIDENCE_abbrev,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$COUNTRY_OF_ORIGIN,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$STATUS,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$ORIGINAL_ACCOUNT_CURRENCY,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$CUSTOMER_SEGMENT,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$SC01_Amount_Exceding_250000__HUF_,mrefined_org$SAR)
+
+stacked_gg(mrefined_org,mrefined_org$Customer_Equals_Account,mrefined_org$SAR)
+
+aggr_plot = aggr(refined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, 
+                 labels=names(refined_org), cex.axis=.7, gap=3, 
+                 ylab=c("Histogram of missing data","Pattern"))
+
+###################
+# RIDIT SCORES ####
+###################
+
 
 # Ridit Scores for tab1
 tab1=prop.table(table(mrefined_org$SAR,mrefined_org$SCENARIO),2) %>%
-  data.frame() %>% 
-  filter(Var1==1) %>% 
-  arrange(desc(Freq))
+  data.frame() %>% filter(Var1==1) %>% arrange(desc(Freq))
 colnames(tab1) = c("Var1", "SCENARIO", "Freq_SAR")  
 
-tab1_2=prop.table(table(mrefined_org$SCENARIO)) %>%
-  data.frame()
+tab1_2=prop.table(table(mrefined_org$SCENARIO)) %>% data.frame()
 colnames(tab1_2) = c('SCENARIO', 'Freq')
 joined_tab1=left_join(tab1,tab1_2, by = 'SCENARIO')
 
@@ -685,13 +664,16 @@ ridit_tab23=bind_cols(joined_tab23,ridit_tab23) %>% select(c('DISTRICT_OF_BUDAPE
 colnames(ridit_tab23)=c('DISTRICT_OF_BUDAPEST','RS_DISTRICT_OF_BUDAPEST')
 mrefined_org=left_join(mrefined_org,ridit_tab23,by = 'DISTRICT_OF_BUDAPEST')
 
+rm(list=ls(pattern='joined')); rm(list=ls(pattern='tab')) 
 #####################################
 ### CLUSTER NONHIERARCHICAL - ORG ###
 #####################################
 
-mrefined_num_org=select_if(mrefined_org, is.numeric)
-mrefined_num_org=scale(mrefined_num_org) %>% data.frame()
+mrefined_num_org = select_if(mrefined_org, is.numeric) %>% 
+  select(-contains('log')) %>% 
+  scale() %>% data.frame()
 cluster_df=mrefined_num_org
+set.seed(123); smpl_mrefined_num_org=mrefined_num_org[sample(1:nrow(mrefined_num_org),5000),]
 
 # K=5
 set.seed(123); cl5_org=clara(mrefined_num_org,5, samples = 50, rngR = T)
@@ -737,92 +719,129 @@ fviz_cluster(cl3_org,stand = FALSE, geom = "point",
 table_k3 = table(mrefined_org$SAR,cluster_df$labels_k3) %>%
   prop.table(2)
 
-# Kmeans Sparse - !!! TIME COMPLEX - tuning paramter 2.2485~2.25
-set.seed(123); smpl_mrefined_num_org=mrefined_num_org[sample(1:nrow(mrefined_num_org),5000),]
+# S Kmeans  - !!! TIME COMPLEX - tuning paramter 1.89
 kperm=KMeansSparseCluster.permute(smpl_mrefined_num_org, K=3, nperms = 5)
 km_cl3_org = KMeansSparseCluster(mrefined_num_org, K = 3, wbounds = kperm$bestw)
 km_cl3_org[[1]]$ws
 fviz_cluster(list(data = mrefined_num_org, cluster = km_cl3_org[[1]]$Cs ),stand = FALSE, geom = "point",
              frame.type = "norm")
-
-cluster_df$labels_km_k3=km_cl3_org[[1]]$Cs
+cluster_df$labels_skm_k3=km_cl3_org[[1]]$Cs
 ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_km_k3), fill = mrefined_org$SAR)) + 
   geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 90))
 table_km_k3 = table(mrefined_org$SAR,cluster_df$labels_km_k3) %>%
   prop.table(2)
+cluster_vars = data.frame(unlist(attributes(km_cl3_org[[1]]$ws)),km_cl3_org[[1]]$ws) %>% 
+  filter(km_cl3_org[[1]]$ws >0)
+    colnames(cluster_vars)=c('Importance','Feature')
 
-df = data.frame(unlist(attributes(km_cl3_org[[1]]$ws)),km_cl3_org[[1]]$ws) %>% filter(km_cl3_org[[1]]$ws >0)
-colnames(df)=c('Importance','Feature')
+# RS Kmeans
+rskm_cl3_org = RSKC(d = mrefined_num_org,ncl = 3,alpha = 0.10, L1 = kperm$bestw)
+fviz_cluster(list(data = mrefined_num_org, cluster = rskm_cl3_org$labels ),stand = FALSE, geom = "point",
+             frame.type = "norm")
+cluster_df$labels_rskm_k3=rskm_cl3_org$labels
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_rskm_k3), fill = mrefined_org$SAR)) + 
+  geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 90))
+cluster_vars2 = data.frame(unlist(attributes(rskm_cl3_org$weights)),rskm_cl3_org$weights) %>%
+  filter(rskm_cl3_org$weights >0)
+colnames(cluster_vars2)=c('Importance','Feature')
+table_rskm_k3 = table(mrefined_org$SAR,cluster_df$labels_rskm_k3) %>%
+  prop.table(2)
+# Profile Clustering with Sparse Kmeans
 
-## Profile Clustering with Kmeans Sparse 
 
-df_profiles = cluster_df %>% group_by(cluster_df$labels_km_k3) %>%
-summarise( mean_CUST = mean(CUSTOMER_FOR_DAYS),
-           mean_RS_SC= mean(RS_SCENARIO),
-           mean_RS_INST = mean(RS_INSTRUMENT),
-           mean_RS_RSD_ON = mean(RS_RAISED_ON),
-           mean_RS_ALERTCUST = mean(RS_ALERT_CUSTOMER_SEGMENT),
-           mean_RS_CUSTSEGMENT = mean(RS_CUSTOMER_SEGMENT),
-           mean_RS_TIME= mean(RS_ORIGINAL_ACCOUNT_CURRENCY),
-           mean_RS_ORIACCOUNT_CURRENCY = mean(RS_ORIGINAL_ACCOUNT_CURRENCY),
-           mean_RS_CREDITDEBIT = mean(RS_CREDIT_DEBIT)
-           )
-#
-bind_cols(attributes(km_cl3_org[[1]]$ws),km_cl3_org[[1]]$ws)
 
-table_k4 = table(mrefined_org$SAR,cluster_df$labels_k4)
-prop.table(table_k4,2)
-table_k5 = table(mrefined_org$SAR,cluster_df$labels_k5)
-prop.table(table_k5,2)
-perf_measures_org=list(cl3_org$objective,cl4_org$objective,cl5_org$objective)
-perf_measures_org
 
-# Summary of WSS with samples = 5000
-fviz_nbclust(smpl_mrefined_num_org, clara, method = "wss", k.max = 5) 
-
-gap_stat=clusGap(smpl_mrefined_num_org, clara, K.max = 5, B = 5)
-
-fviz_gap_stat(gap_stat)
-
+# Cluster Profile for RS Kmeans
+  # Most Relevant Vars for Clustering
+mrefined_org$rskm_k3 = rskm_cl3_org$labels %>% factor()
+stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$SAR)
+stacked_gg(mrefined_org,mrefined_org$TXN_TYPE,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$SCOPE,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$INSTRUMENT,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$REGION,mrefined_org$rskm_k3)
+density_gg(mrefined_org,mrefined_org$RISK_SCORE_2,mrefined_org$rskm_k3)
+  # Not relevant Vars for Clustering
+density_gg(mrefined_org,mrefined_org$logint_NUM_CASES,mrefined_org$rskm_k3)
+density_gg(mrefined_org,mrefined_org$logint_NUM_ACCOUNTS,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$CUSTOMER_SEGMENT,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$SCENARIO,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$STATUS,mrefined_org$rskm_k3)
+  # Profiling
+rskm_k3_profiles = mrefined_org %>% group_by(mrefined_org$rskm_k3) %>%
+  summarise( 
+             SAR_RATE = mean(as.numeric(SAR))-1,
+             median_RSCORE2 = median(RISK_SCORE_2),
+             mode_TXN= Mode(TXN_TYPE),
+             mode_INST = Mode(INSTRUMENT),
+             mode_RAISED = Mode(RAISED_ON),
+             mode_REGION = Mode(REGION),
+             mode_SCOPE = Mode(SCOPE)
+            )
 ########################
 # FEATURE SELECTION ####
 ########################
 
-mrefined_org$labels_k3=cluster_df$labels_k3
-
-HighRisk_mrefined_org = mrefined_org %>% filter(labels_k3 == 2) %>%
-  select(-contains('RS_'))
-LowRisk_mrefined_org = mrefined_org %>% filter(labels_k3 == 3) %>%
-  select(-contains('RS_'))
-
-# Feature reduction for High Risk - Boruta
-HRcl3_index = createDataPartition(HighRisk_mrefined_org$SAR,p=.70)
-HRcl3_data_train = HighRisk_mrefined_org[unlist(HRcl3_index_train),]
-HRcl3_data_test = HighRisk_mrefined_org[-unlist(HRcl3_index_train),]
-
-  #Use a meaningful set of explanatory vars
-HRcl3_boruta=Boruta(HRcl3_data_train$SAR~., data = HRcl3_data_train, doTrace = 2)
-print(HRcl3_boruta)
-plot(HRcl3_boruta, xlab = "", xaxt = "n")
-lz=lapply(1:ncol(HRcl3_boruta$ImpHistory),function(i)
-  HRcl3_boruta$ImpHistory[is.finite(HRcl3_boruta$ImpHistory[,i]),i])
-names(lz) = colnames(HRcl3_boruta$ImpHistory)
+# Creating different datasets for each cluster
+HighRisk_mrefined_org = mrefined_org %>% filter(rskm_k3 == 3) %>%
+  select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
+MedRisk_mrefined_org = mrefined_org %>% filter(rskm_k3 == 1) %>%
+  select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
+LowRisk_mrefined_org = mrefined_org %>% filter(rskm_k3 == 2) %>%
+  select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
+# High Risk Cluster
+  # Getting the training and test set
+set.seed(123); HR_rskm_index = createDataPartition(HighRisk_mrefined_org$SAR,p=.70)
+HR_rskm_data_train = HighRisk_mrefined_org[unlist(HR_rskm_index),]
+HR_rskm_data_test = HighRisk_mrefined_org[-unlist(HR_rskm_index),]
+  # Boruta: Graph
+set.seed(123); HR_rskm_boruta = Boruta(HR_rskm_data_train$SAR~., data = HR_rskm_data_train, doTrace = 2)
+print(HR_rskm_boruta)
+plot(HR_rskm_boruta, xlab = "", xaxt = "n")
+lz=lapply(1:ncol(HR_rskm_boruta$ImpHistory),function(i)
+  HR_rskm_boruta$ImpHistory[is.finite(HR_rskm_boruta$ImpHistory[,i]),i])
+names(lz) = colnames(HR_rskm_boruta$ImpHistory)
 Labels = sort(sapply(lz,median))
 axis(side = 1,las=2,labels = names(Labels),
-     at = 1:ncol(HRcl3_boruta$ImpHistory), cex.axis = 0.7)
-HRcl3_boruta_for=getConfirmedFormula(HRcl3_boruta)
-###
-featlist=attStats(HRcl3_boruta)
-featlist1=subset(featlist,select = 'medianImp')
-top10=mutate(featlist1, rank = rank(-featlist$medianImp)) %>% arrange(rank)
+     at = 1:ncol(HR_rskm_boruta$ImpHistory), cex.axis = 0.7)
+HR_rskm_boruta_formula=getConfirmedFormula(HR_rskm_boruta)
+  # The ranked list of most relevant features
+HR_featlist = attStats(HR_rskm_boruta) %>%
+  rownames_to_column(var = 'Features')
+HR_featlist_top10 = subset(HR_featlist, select = c('Features','medianImp')) %>%
+  mutate(rank = rank(-HR_featlist$medianImp)) %>% arrange(rank)
 
-class(top10)
-###
-fit1=glm(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + NEW_ACCOUNT_BALANCE,
-         data = data_train, family = binomial)
-p=predict(fit1, data_train , type='response')
+# Low Risk Cluster
+  # Getting the training and test set
+set.seed(123); LR_rskm_index = createDataPartition(LowRisk_mrefined_org$SAR,p=.70)
+LR_rskm_data_train = LowRisk_mrefined_org[unlist(LR_rskm_index),]
+LR_rskm_data_test = LowRisk_mrefined_org[-unlist(LR_rskm_index),]
 
-ggplot(data_train, aes(x=p)) + 
-  geom_density(aes(group=SAR, colour=SAR, fill=SAR), alpha=0.3)
+  # Boruta: Graph
+LR_rskm_boruta = Boruta(LR_rskm_data_train$SAR~., data = LR_rskm_data_train, doTrace = 2)
+print(LR_rskm_boruta)
+plot(LR_rskm_boruta, xlab = "", xaxt = "n")
+lz=lapply(1:ncol(LR_rskm_boruta$ImpHistory),function(i)
+  LR_rskm_boruta$ImpHistory[is.finite(LR_rskm_boruta$ImpHistory[,i]),i])
+names(lz) = colnames(LR_rskm_boruta$ImpHistory)
+Labels = sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+     at = 1:ncol(LR_rskm_boruta$ImpHistory), cex.axis = 0.7)
+LR_rskm_boruta_formula=getConfirmedFormula(LR_rskm_boruta)
+  # The ranked list of most relevant features
+LR_featlist = attStats(LR_rskm_boruta) %>%
+rownames_to_column(var = 'Features')
+LR_featlist_top10 = subset(LR_featlist, select = c('Features','medianImp')) %>%
+  mutate(rank = rank(-LR_featlist$medianImp)) %>% arrange(rank)
 
 
+################
+# EXPORTING ####
+################
+
+HR_excel = createWorkbook()
+HR_excel1 = createSheet(wb = HR_excel, sheetName = 'HR_training')
+HR_excel2 = createSheet(wb = HR_excel, sheetName = 'HR_test')
+# data(HR_rskm_data_train); data(HR_rskm_data_test)
+addDataFrame(x = HR_rskm_data_train, sheet = HR_excel1)
+addDataFrame(x = HR_rskm_data_test, sheet = HR_excel2)
+saveWorkbook(HR_excel, 'HR.xlsx')
