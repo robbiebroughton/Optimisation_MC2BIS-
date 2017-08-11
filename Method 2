@@ -2,6 +2,7 @@
 #### DATA LOADING & PREPROCESSING ####
 ######################################
 rm(list=ls())
+library(fmsb)
 library(xlsx)
 library(RSKC)
 library(sparcl)
@@ -74,7 +75,7 @@ data<- subset(data, select = -c(EqualTo,SC16_17_18_2nd_party_Country,Compound_ID
                               BRANCH_ID,BUSINESS_TYPE,COUNTRY_OF_RESIDENCE,ACCOUNT_BALANCE,
                               HOLDING_BANK_NAME,CUSTOMER_BRANCH,ACCOUNT_BRANCH,BRANCH_CODE,
                               CASE_KEY, CASE_IDENTIFIER,NUM_ALERTS,NUM_CUSTOMERS,CASE_CREATION_DATE,
-                              INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE))
+                              INVESTIGATION_LENGTH,NORKOM_SCORE,TRANSACTION_DATE,RISK_SCORE_1, RISK_SCORE_2))
 data$NEW_ACCOUNT_BALANCE = as.numeric(data$NEW_ACCOUNT_BALANCE)
 data$BASE_CURRENCY_AMOUNT=as.numeric(data$BASE_CURRENCY_AMOUNT)
 # Creating Response Variable (SAR)
@@ -119,7 +120,7 @@ datanew_org$INSTRUMENT[is.na(datanew_org$INSTRUMENT)] = "NOT_A_SINGLE_TRANSACTIO
 datanew_org$SCOPE[is.na(datanew_org$SCOPE)] = "NOT_A_SINGLE_TRANSACTION"
 datanew_org$REGION[is.na(datanew_org$REGION)] = "NOT_A_SINGLE_TRANSACTION"
 
-datanew_org$BASE_CURRENCY_AMOUNT = log(datanew_org$BASE_CURRENCY_AMOUNT)  %>% cut(c(quantile(log(datanew_org$BASE_CURRENCY_AMOUNT),
+datanew_org$BASE_CURRENCY_AMOUNT = datanew_org$BASE_CURRENCY_AMOUNT  %>% cut(c(quantile(datanew_org$BASE_CURRENCY_AMOUNT,
                                                                                              na.rm = T))) %>% addNA()
 levels(datanew_org$BASE_CURRENCY_AMOUNT)[is.na(levels(datanew_org$BASE_CURRENCY_AMOUNT))] = "NOT_A_SINGLE_TRANSACTION"
 
@@ -200,10 +201,6 @@ mrefined_org$logneg_NEW_ACCOUNT_BALANCE = log_neg(mrefined_org$NEW_ACCOUNT_BALAN
 # Vars that need transformation for better viz (right-skewed; e.g log) : NUM_CASES, NEW_ACCOUNT_BALANCE,
 # NUM_ACCOUNTS, CUSTOMER_FOR_DAYS
 
-density_gg(mrefined_org,mrefined_org$RISK_SCORE_1,mrefined_org$SAR)
-
-density_gg(mrefined_org,mrefined_org$RISK_SCORE_2,mrefined_org$SAR)
-
 density_gg(mrefined_org,mrefined_org$NUM_CASES,mrefined_org$SAR)
   density_gg(mrefined_org,mrefined_org$logint_NUM_CASES,mrefined_org$SAR)
 
@@ -265,10 +262,10 @@ aggr_plot = aggr(refined_org, col=c('navyblue','red'), numbers=TRUE, sortVars=TR
                  labels=names(refined_org), cex.axis=.7, gap=3, 
                  ylab=c("Histogram of missing data","Pattern"))
 
-###################
-# RIDIT SCORES ####
-###################
-
+################### 
+# RIDIT SCORES ####  
+################### 
+# WORD OF CAUTION: Don't rerun this code as join fn will create duplicates
 
 # Ridit Scores for tab1
 tab1=prop.table(table(mrefined_org$SAR,mrefined_org$SCENARIO),2) %>%
@@ -675,32 +672,10 @@ mrefined_num_org = select_if(mrefined_org, is.numeric) %>%
 cluster_df=mrefined_num_org
 set.seed(123); smpl_mrefined_num_org=mrefined_num_org[sample(1:nrow(mrefined_num_org),5000),]
 
-# K=5
-set.seed(123); cl5_org=clara(mrefined_num_org,5, samples = 50, rngR = T)
+# Evaluation of optimal n of clusters : clest suggests k = 3 while gap = 1
+set.seed(123); clest = Clest(as.matrix(smpl_mrefined_num_org), maxK = 5, alpha = 0.05, B = 15, B0 = 5, nstart = 1000)
 
-cluster_df$labels_k5=cl5_org$clustering
-ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k5), fill = mrefined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-
-cl5_org$clusinfo
-fviz_cluster(cl5_org,stand = FALSE, geom = "point",
-             frame.type = "norm")
-cl5_org$medoids
-summary(cl5_org)
-summary(silhouette(cl5_org))
-
-# K=4
-set.seed(123); cl4_org=clara(mrefined_num_org, 4 , samples = 50, rngR = T)
-cluster_df$labels_k4=cl4_org$clustering
-ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_k4), fill = mrefined_org$SAR)) + 
-  geom_bar(position = "fill") +
-  theme(axis.text.x = element_text(angle = 90))
-fviz_cluster(cl4_org,stand = FALSE, geom = "point",
-             frame.type = "norm")
-cl4_org$clusinfo
-summary(cl4_org)
-summary(silhouette(cl4_org))
+set.seed(123); gap = clusGap(smpl_mrefined_num_org, FUNcluster = clara, K.max = 5)
 
 # CLARA - K=3
 set.seed(123); cl3_org=clara(mrefined_num_org, 3 , samples = 50, rngR = T)
@@ -720,22 +695,23 @@ table_k3 = table(mrefined_org$SAR,cluster_df$labels_k3) %>%
   prop.table(2)
 
 # S Kmeans  - !!! TIME COMPLEX - tuning paramter 1.89
-kperm=KMeansSparseCluster.permute(smpl_mrefined_num_org, K=3, nperms = 5)
+set.seed(123);kperm=KMeansSparseCluster.permute(smpl_mrefined_num_org, K=3, nperms = 5)
 km_cl3_org = KMeansSparseCluster(mrefined_num_org, K = 3, wbounds = kperm$bestw)
 km_cl3_org[[1]]$ws
 fviz_cluster(list(data = mrefined_num_org, cluster = km_cl3_org[[1]]$Cs ),stand = FALSE, geom = "point",
              frame.type = "norm")
 cluster_df$labels_skm_k3=km_cl3_org[[1]]$Cs
-ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_km_k3), fill = mrefined_org$SAR)) + 
+ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_skm_k3), fill = mrefined_org$SAR)) + 
   geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 90))
-table_km_k3 = table(mrefined_org$SAR,cluster_df$labels_km_k3) %>%
+km_cl3_org
+table_km_k3 = table(mrefined_org$SAR,cluster_df$labels_skm_k3) %>%
   prop.table(2)
 cluster_vars = data.frame(unlist(attributes(km_cl3_org[[1]]$ws)),km_cl3_org[[1]]$ws) %>% 
   filter(km_cl3_org[[1]]$ws >0)
-    colnames(cluster_vars)=c('Importance','Feature')
+colnames(cluster_vars)=c('Feature','Importance')
 
 # RS Kmeans
-rskm_cl3_org = RSKC(d = mrefined_num_org,ncl = 3,alpha = 0.10, L1 = kperm$bestw)
+set.seed(123); rskm_cl3_org = RSKC(d = mrefined_num_org, ncl = 3, alpha = 0.10, L1 = kperm$bestw)
 fviz_cluster(list(data = mrefined_num_org, cluster = rskm_cl3_org$labels ),stand = FALSE, geom = "point",
              frame.type = "norm")
 cluster_df$labels_rskm_k3=rskm_cl3_org$labels
@@ -743,7 +719,7 @@ ggplot(cluster_df, aes(x = as.factor(cluster_df$labels_rskm_k3), fill = mrefined
   geom_bar(position = "fill") + theme(axis.text.x = element_text(angle = 90))
 cluster_vars2 = data.frame(unlist(attributes(rskm_cl3_org$weights)),rskm_cl3_org$weights) %>%
   filter(rskm_cl3_org$weights >0)
-colnames(cluster_vars2)=c('Importance','Feature')
+colnames(cluster_vars)=c('Feature','Importance')
 table_rskm_k3 = table(mrefined_org$SAR,cluster_df$labels_rskm_k3) %>%
   prop.table(2)
 # Profile Clustering with Sparse Kmeans
@@ -755,11 +731,11 @@ table_rskm_k3 = table(mrefined_org$SAR,cluster_df$labels_rskm_k3) %>%
   # Most Relevant Vars for Clustering
 mrefined_org$rskm_k3 = rskm_cl3_org$labels %>% factor()
 stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$SAR)
-stacked_gg(mrefined_org,mrefined_org$TXN_TYPE,mrefined_org$rskm_k3)
-stacked_gg(mrefined_org,mrefined_org$SCOPE,mrefined_org$rskm_k3)
-stacked_gg(mrefined_org,mrefined_org$INSTRUMENT,mrefined_org$rskm_k3)
-stacked_gg(mrefined_org,mrefined_org$REGION,mrefined_org$rskm_k3)
-density_gg(mrefined_org,mrefined_org$RISK_SCORE_2,mrefined_org$rskm_k3)
+stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$TXN_TYPE)
+stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$SCOPE)
+stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$INSTRUMENT)
+stacked_gg(mrefined_org,mrefined_org$rskm_k3,mrefined_org$REGION)
+
   # Not relevant Vars for Clustering
 density_gg(mrefined_org,mrefined_org$logint_NUM_CASES,mrefined_org$rskm_k3)
 density_gg(mrefined_org,mrefined_org$logint_NUM_ACCOUNTS,mrefined_org$rskm_k3)
@@ -770,10 +746,8 @@ stacked_gg(mrefined_org,mrefined_org$STATUS,mrefined_org$rskm_k3)
 rskm_k3_profiles = mrefined_org %>% group_by(mrefined_org$rskm_k3) %>%
   summarise( 
              SAR_RATE = mean(as.numeric(SAR))-1,
-             median_RSCORE2 = median(RISK_SCORE_2),
              mode_TXN= Mode(TXN_TYPE),
              mode_INST = Mode(INSTRUMENT),
-             mode_RAISED = Mode(RAISED_ON),
              mode_REGION = Mode(REGION),
              mode_SCOPE = Mode(SCOPE)
             )
@@ -807,7 +781,7 @@ HR_rskm_boruta_formula=getConfirmedFormula(HR_rskm_boruta)
   # The ranked list of most relevant features
 HR_featlist = attStats(HR_rskm_boruta) %>%
   rownames_to_column(var = 'Features')
-HR_featlist_top10 = subset(HR_featlist, select = c('Features','medianImp')) %>%
+HR_featlist_top10 = subset(HR_featlist, select = c('Feature','medianImp')) %>%
   mutate(rank = rank(-HR_featlist$medianImp)) %>% arrange(rank)
 
 # Low Risk Cluster
@@ -830,8 +804,49 @@ LR_rskm_boruta_formula=getConfirmedFormula(LR_rskm_boruta)
   # The ranked list of most relevant features
 LR_featlist = attStats(LR_rskm_boruta) %>%
 rownames_to_column(var = 'Features')
-LR_featlist_top10 = subset(LR_featlist, select = c('Features','medianImp')) %>%
+LR_featlist_top10 = subset(LR_featlist, select = c('Feature','medianImp')) %>%
   mutate(rank = rank(-LR_featlist$medianImp)) %>% arrange(rank)
+
+# Med Risk Cluster
+  # Getting the training and test set
+set.seed(123); MR_rskm_index = createDataPartition(MedRisk_mrefined_org$SAR,p=.70)
+MR_rskm_data_train = MedRisk_mrefined_org[unlist(MR_rskm_index),]
+MR_rskm_data_test = MedRisk_mrefined_org[-unlist(MR_rskm_index),]
+
+  # Boruta: Graph
+MR_rskm_boruta = Boruta(MR_rskm_data_train$SAR~., data = MR_rskm_data_train, doTrace = 2)
+print(MR_rskm_boruta)
+plot(MR_rskm_boruta, xlab = "", xaxt = "n")
+lz=lapply(1:ncol(MR_rskm_boruta$ImpHistory),function(i)
+  MR_rskm_boruta$ImpHistory[is.finite(MR_rskm_boruta$ImpHistory[,i]),i])
+names(lz) = colnames(MR_rskm_boruta$ImpHistory)
+Labels = sort(sapply(lz,median))
+axis(side = 1,las=2,labels = names(Labels),
+     at = 1:ncol(MR_rskm_boruta$ImpHistory), cex.axis = 0.7)
+MR_rskm_boruta_formula=getConfirmedFormula(MR_rskm_boruta)
+  # The ranked list of most relevant features
+MR_featlist = attStats(MR_rskm_boruta) %>%
+  rownames_to_column(var = 'Features')
+MR_featlist_top10 = subset(MR_featlist, select = c('Feature','medianImp')) %>%
+  mutate(rank = rank(-MR_featlist$medianImp)) %>% arrange(rank)
+
+######################################
+### SUPERVISED LEARNING - LOGISTIC ###
+######################################
+
+# Subsampling - Downsampling
+set.seed(123); Down_LowRisk_mrefined_org = downSample(LowRisk_mrefined_org, LowRisk_mrefined_org$SAR)
+Logit_Fit_DLow = glm(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + RS_SCENARIO + RS_EVENT_MONTH + NUM_ACCOUNTS + NEW_ACCOUNT_BALANCE,
+                      data = Down_LowRisk_mrefined_org, family = binomial )
+NagelkerkeR2(Logit_Fit_DLow)
+(1-exp((Logit_Fit_DLow$dev-Logit_Fit_DLow$null)/nrow(Down_LowRisk_mrefined_org)))/(1-exp(-Logit_Fit_DLow$null/nrow(Down_LowRisk_mrefined_org)))
+
+
+# Upsampling
+set.seed(123); Up_LowRisk_mrefined_org = upSample(LowRisk_mrefined_org, LowRisk_mrefined_org$SAR)
+Logit_Fit_ULow = glm(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + RS_SCENARIO + RS_EVENT_MONTH + NUM_ACCOUNTS + NEW_ACCOUNT_BALANCE,
+                     data = Up_LowRisk_mrefined_org, family = binomial )
+(1-exp((Logit_Fit_ULow$dev-Logit_Fit_ULow$null)/nrow(Up_LowRisk_mrefined_org)))/(1-exp(-Logit_Fit_ULow$null/nrow(Up_LowRisk_mrefined_org)))
 
 
 ################
