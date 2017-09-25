@@ -12,10 +12,15 @@ Develop new system using sound statistical methodology that:
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
 ## Data:
-For privacy reasons we cannot release data set!
+For privacy reasons we cannot release data set but it is alerted transaction data from a Hungarian bank collected over 2 years (Aug 2014 - Sept 2016).
 
 ## **Overview of plan:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
+
+### Flow of transactions
+- *'Transactions'* generated when a customer of the bank buys or sells something.
+- All *'Transactions'* go through AML system and turn into *'Alerts'* when a customer performing a transaction coincides with one of the hypothesized rules for money launderers, eg. a transaction is made to or from a high risk country.
+- *'Alerts'* are then investigated over a period of 2 years and at the time of the query (assumed just after Sept 2016) we were given the status of the alerts. From this we could deduce whether the alerts were put forward to *'SAR'* or not.
 
 1) Stage 1 - We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
 - Our goal here is to:
@@ -42,6 +47,11 @@ Methodology
 2) Take scenario one and extract current threshold value for each rule and store it
 3) On each customer profile tune scenario one
 4) Repeat for all scenarios
+
+## **Still To Do**
+
+## **Issues That Arose And Improvements To Be Made**
+
 
 
  
