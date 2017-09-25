@@ -18,7 +18,7 @@ For privacy reasons we cannot release data set!
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
 
 1) Stage 1 - We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
-Our goal here is to:
+- Our goal here is to:
   - Create predictive model to predict No SAR and find the optimal cut off value to autclose non suspicious alerts
   - Explain importance of the variables (Very important as bank employee must be able to explain to investigator why the AML system has autoclosed an alert)
 
