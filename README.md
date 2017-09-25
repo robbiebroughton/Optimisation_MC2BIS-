@@ -22,12 +22,12 @@ For privacy reasons we cannot release data set but it is alerted transaction dat
 - All *'Transactions'* go through AML system and turn into *'Alerts'* when a customer performing a transaction coincides with one of the hypothesized rules for money launderers, eg. a transaction is made to or from a high risk country.
 - *'Alerts'* are then investigated over a period of 2 years and at the time of the query (assumed just after Sept 2016) we were given the status of the alerts. From this we could deduce whether the alerts were put forward to *'SAR'* or not.
 
-1) Stage 1 - We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
+Stage 1 - We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
 - Our goal here is to:
   - Create predictive model to predict No SAR and find the optimal cut off value to autclose non suspicious alerts
   - Explain importance of the variables (Very important as bank employee must be able to explain to investigator why the AML system has autoclosed an alert)
 
-2) Stage 2 - We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
+Stage 2 - We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
 
 ### *Stage 1*
 Methodology:
@@ -41,7 +41,7 @@ Methodology:
 7) Model Evaluation and Autoclosing of alerts
 
 ### *Stage 2*
-Methodology
+Methodology:
 
 1) Get each scenario and extract rules from each
 2) Take scenario one and extract current threshold value for each rule and store it
