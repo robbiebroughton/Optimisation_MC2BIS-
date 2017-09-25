@@ -17,7 +17,7 @@ For privacy reasons we cannot release data set but it is alerted transaction dat
 ## **Overview of plan:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
 
-Detailed presentation can be found here ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
+Detailed presentation can be downloaded ![here](https://github.com/robbiebroughton/Optimisation_MC2BIS-/files/1329850/Transaction.Monitoring.Process.-.Presentation.pptx)
 
 ### Flow of transactions
 - *'Transactions'* generated when a customer of the bank buys or sells something.
