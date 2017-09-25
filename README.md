@@ -14,7 +14,7 @@ Develop new system using sound statistical methodology that:
 ## Data:
 For privacy reasons we cannot release data set but it is alerted transaction data from a Hungarian bank collected over 2 years (Aug 2014 - Sept 2016). R code is available.
 
-## **Overview of plan:**
+## **From Problem to Analysis:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
 
 For further explanation of methods used presentation can be found ![here](https://github.com/robbiebroughton/Optimisation_MC2BIS-/files/1329850/Transaction.Monitoring.Process.-.Presentation.pptx)
