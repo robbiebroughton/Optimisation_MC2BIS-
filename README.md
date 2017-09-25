@@ -53,8 +53,6 @@ Methodology:
 4) Repeat for all scenarios
 5) Generate new data driven rules using subgroup discovery algorithm
 
-See Wiki for further details!
-
 ## What we found so far..
 
 ## **Still To Do**
