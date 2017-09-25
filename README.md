@@ -17,6 +17,8 @@ For privacy reasons we cannot release data set but it is alerted transaction dat
 ## **Overview of plan:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
 
+Detailed presentation can be found here ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
+
 ### Flow of transactions
 - *'Transactions'* generated when a customer of the bank buys or sells something.
 - All *'Transactions'* go through AML system and turn into *'Alerts'* when a customer performing a transaction coincides with one of the hypothesized rules for money launderers, eg. a transaction is made to or from a high risk country.
@@ -33,11 +35,11 @@ Stage 2 - We take a look at the rules used to generate the original alerts and t
 Methodology:
 
 1) Initial Data Cleaning
-2) Top down segmentation
-3) Feature selection, replacing missing values
-4) Standardization and exploratory analysis
-5) Bottom up clustering
-6) Model Building
+2) Top down segmentation - domain knowledge based segmentation of bank customers (personal, government, small or medium Enterprises and medium to large companies)
+3) Feature selection, replacing missing values  
+4) Standardization and exploratory analysis - Ridit Scoring
+5) Bottom up clustering - algorithm based clustering (Sparse K means, Clara, Robust Spare K-means)
+6) Model Building - Logistic regression, XGBoost, LogitBoost, Decision Tree, Random Forest
 7) Model Evaluation and Autoclosing of alerts
 
 ### *Stage 2*
@@ -48,7 +50,12 @@ Methodology:
 3) On each customer profile tune scenario one
 4) Repeat for all scenarios
 
+See Wiki for details
+
 ## **Still To Do**
+- Find optimal cut off value for best model of Cluster 1
+- Develop stage 2 optimisation and link in subgroup discovery algorithm with this (to generate data driven rules instead of knowledge based)
+3) 
 
 ## **Issues That Arose And Improvements To Be Made**
 
