@@ -25,7 +25,7 @@ For privacy reasons we cannot release data set!
 2) Stage 2 - We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
 
 ### *Stage 1*
-Overview of methodology:
+Methodology:
 
 1) Initial Data Cleaning
 2) Top down segmentation
@@ -36,6 +36,12 @@ Overview of methodology:
 7) Model Evaluation and Autoclosing of alerts
 
 ### *Stage 2*
+Methodology
+
+1) Get each scenario and extract rules from each
+2) Take scenario one and extract current threshold value for each rule and store it
+3) On each customer profile tune scenario one
+4) Repeat for all scenarios
 
 
  
