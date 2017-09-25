@@ -11,8 +11,32 @@ Develop new system using sound statistical methodology that:
 1) Complies with current regualtions
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
+## Data:
+For privacy reasons we cannot release data set!
+
 ## **Overview of plan:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
+
+1) Stage 1 - We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
+Our goal here is to:
+- Create predictive model to predict No SAR and find the optimal cut off value to autclose non suspicious alerts
+- Explain importance of the variables (Very important as bank employee must be able to explain to investigator why the AML system has autoclosed an alert)
+
+2) Stage 2 - We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
+
+### *Stage 1*
+Overview of methodology:
+
+1) Initial Data Cleaning
+2) Top down segmentation
+3) Feature selection, replacing missing values
+4) Standardization and exploratory analysis
+5) Bottom up clustering
+6) Model Building
+7) Model Evaluation and Autoclosing of alerts
+
+### *Stage 2*
+
 
  
 ## Team:
