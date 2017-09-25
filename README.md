@@ -11,7 +11,9 @@ Develop new system using sound statistical methodology that:
 1) Complies with current regualtions
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
-## **How to achieve?:**
+## **Overview of plan:**
+A 2 Stage process:
+
 
 ## Team:
 - https://github.com/robbiebroughton
