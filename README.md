@@ -12,7 +12,6 @@ Develop new system using sound statistical methodology that:
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
 ## **Overview of plan:**
-A 2 Stage process:
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
 
  
