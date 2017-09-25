@@ -56,7 +56,7 @@ Methodology:
 See Wiki for further details!
 
 ## **Still To Do**
-- Find optimal cut off value for best model of Cluster 1
+- Find optimal cut off value for best model of Big Data and develop models for Small Data 
 - Develop stage 2 optimisation and link subgroup discovery algorithm into methodology (to generate data driven rules instead of knowledge based)
 - Try to implement the same in SAS also
 
