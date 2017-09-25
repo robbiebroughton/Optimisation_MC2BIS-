@@ -12,7 +12,7 @@ Develop new system using sound statistical methodology that:
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
 ## Data:
-For privacy reasons we cannot release data set but it is alerted transaction data from a Hungarian bank collected over 2 years (Aug 2014 - Sept 2016).
+For privacy reasons we cannot release data set but it is alerted transaction data from a Hungarian bank collected over 2 years (Aug 2014 - Sept 2016). R code is available.
 
 ## **Overview of plan:**
 ![2 Stage Process](https://user-images.githubusercontent.com/30290960/30808840-f2261de4-a1ff-11e7-8dd6-3b748376f57a.PNG)
@@ -54,6 +54,8 @@ Methodology:
 5) Generate new data driven rules using subgroup discovery algorithm
 
 See Wiki for further details!
+
+## What we found so far..
 
 ## **Still To Do**
 - Find optimal cut off value for best model of Big Data and develop models for Small Data 
