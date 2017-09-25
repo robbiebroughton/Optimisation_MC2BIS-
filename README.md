@@ -13,7 +13,7 @@ Develop new system using sound statistical methodology that:
 
 ## **Overview of plan:**
 A 2 Stage process:
-![2 Stage Process](https://github.com/robbiebroughton/Optimisation_MC2BIS-/master/Capture.PNG)
+![2 Stage Process](https://github.com/robbiebroughton/Optimisation_MC2BIS-/2 stage process.PNG)
 
  
 ## Team:
