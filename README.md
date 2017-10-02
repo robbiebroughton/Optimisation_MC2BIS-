@@ -8,7 +8,7 @@ Due to increasingly strict Anti Money Laundering regulations banks, among others
 
 ### **Our Goal:**
 Develop new system using sound statistical methodology that:
-1) Complies with current regualtions
+1) Complies with current regulations
 2) Automatically reduces the number of false positives generated and hence investigator workload
 
 ## Data:
