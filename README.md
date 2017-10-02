@@ -40,7 +40,7 @@ Methodology:
 2) Top down segmentation - domain knowledge based segmentation of bank customers (personal, government, small or medium Enterprises and medium to large companies)
 3) Feature selection, replacing missing values   
 4) Standardization and exploratory analysis - Ridit Scoring 
-5) Bottom up clustering - algorithm based clustering (Sparse K means, Clara, Robust Spare K-means)
+5) Bottom up clustering - algorithm based clustering (Sparse K means, Clara, Robust Sparse K-means)
 6) Model Building - Logistic regression, XGBoost, LogitBoost, Decision Tree, Random Forest
 7) Model Evaluation and Autoclosing of alerts
 
