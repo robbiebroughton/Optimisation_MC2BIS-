@@ -31,7 +31,8 @@ We receive data set of alerted transactions with labels of SAR (Suspicious Activ
   - Explain importance of the variables (Very important as bank employee must be able to explain to investigator why the AML system has autoclosed an alert)
 
 ##### Stage 2
-We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
+- We take a look at the rules used to generate the original alerts and tune them for each customer profile. This will reduce the original number of alerts generated next time around!
+- Also generate our own data driven rules using Subgroup Discovery algorithm
 
 ### *Stage 1 - Classification problem*
 Methodology:
