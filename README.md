@@ -27,7 +27,7 @@ For further explanation of methods used presentation can be found ![here](https:
 #### Stage 1
 We receive data set of alerted transactions with labels of SAR (Suspicious Activity Report) or No SAR. 
 - Our goal here is to:
-  - Create predictive model to predict No SAR and find the optimal cut off value to autclose non suspicious alerts
+  - Create predictive model to predict No SAR and order the alerts from very risky to not risky
   - Explain importance of the variables (Very important as bank employee must be able to explain to investigator why the AML system has autoclosed an alert)
 
 ##### Stage 2
@@ -43,7 +43,7 @@ Methodology:
 4) Standardization and exploratory analysis - Ridit Scoring 
 5) Bottom up clustering - algorithm based clustering (Sparse K means, Clara, Robust Sparse K-means)
 6) Model Building - Logistic regression, XGBoost, LogitBoost, Decision Tree, Random Forest
-7) Model Evaluation and Autoclosing of alerts
+7) Model Evaluation and ranking riskyness of alerts
 
 ### *Stage 2 - Rule tuning and association rule mining problem*
 Methodology:
