@@ -1,5 +1,6 @@
 # Optimisation Of Transaction Monitoring Process in AML Using A Statistical Approach
-
+# By Bharat Ram Ammu, Robbie Broughton and Carlos Ortega Vazquez
+# Master's in Statistics, KU Leuven, Belgium
 ## Description 
 ### **Problem:** 
 Due to increasingly strict Anti Money Laundering regulations banks, among others, are:
