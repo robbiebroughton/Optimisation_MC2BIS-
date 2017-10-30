@@ -1,5 +1,5 @@
 # Optimisation Of Transaction Monitoring Process in AML Using A Statistical Approach
-# By Bharat Ram Ammu, Robbie Broughton and Carlos Ortega Vazquez
+-By Bharat Ram Ammu, Robbie Broughton and Carlos Ortega Vazquez
 # Master's in Statistics, KU Leuven, Belgium
 ## Description 
 ### **Problem:** 
