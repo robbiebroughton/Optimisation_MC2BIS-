@@ -1,4 +1,9 @@
-#### Small Data ###
+#### Small Data ####
+
+
+## Libraries to load ####
+library(Boruta)
+library(MLmetrics)
 library(xgboost)
 library(xlsx)
 library(boot)
@@ -9,7 +14,7 @@ library(FSelector)
 library(RSKC)
 library(caTools)
 library(bestglm)
-library(rattle)
+library(caret)
 library(rpart)
 library(ROSE)
 library(car)
@@ -30,13 +35,10 @@ library(compare)
 library(clValid)
 library(reshape2)
 library(mice)
-library(caret)
-library(Boruta)
-library(cluster)
+library(party)
 library(tibble)
 options(java.parameters = "-Xmx50000m")
 if(!require(devtools)) install.packages("devtools")
-devtools::install_github("kassambara/factoextra")
 library(factoextra)
 library(fpc)
 
@@ -157,14 +159,25 @@ table(smalldata$SPECIAL_ATTENTION_FLAG) #337
 
 
 
+# Deal with 'missing for a reason' guys first!
+  
+# some variables' NA are actually informative, for example these actually below aren't missing information, they are indicating values..
+smalldata$DISTRICT_OF_BUDAPEST[is.na(smalldata$DISTRICT_OF_BUDAPEST)] = "OUTSIDE_BUDAPEST"
+smalldata$CREDIT_DEBIT_CODE[is.na(smalldata$CREDIT_DEBIT_CODE)] = "NOT_A_TRANSACTION"
+smalldata$TXN_TYPE[is.na(smalldata$TXN_TYPE)] = "NOT_A_TRANSACTION"
+smalldata$INSTRUMENT[is.na(smalldata$INSTRUMENT)] = "NOT_A_TRANSACTION"
+smalldata$SCOPE[is.na(smalldata$SCOPE)] = "NOT_A_TRANSACTION"
+smalldata$REGION[is.na(smalldata$REGION)] = "NOT_A_TRANSACTION"
+smalldata$BASE_CURRENCY_AMOUNT[is.na(smalldata$BASE_CURRENCY_AMOUNT)] = "NOT_A_TRANSACTION"
+
 # Because of so much missingness remove all variables with > 20% missingness
 rankmissing = (sapply(smalldata,function(x) mean(is.na(x))) %>%
                  sort())
 rankmissing
+
 names_miss=names(rankmissing[which(rankmissing < 0.20)])
 refined_small= subset(smalldata, select = names_miss)
 names(refined_small)
-
 
 # Also consider variables where missingness is meaningful
 #refined_small<-subset(smalldata,select=c(SCENARIO,EVENT_MONTH,EVENT_DATE,RAISED_ON,
@@ -175,17 +188,6 @@ names(refined_small)
                                           #STATUS,DISTRICT_OF_BUDAPEST,CREDIT_DEBIT_CODE,TXN_TYPE,SCOPE,INSTRUMENT,REGION,BASE_CURRENCY_AMOUNT))
 
 #### Replacing Missing Values ####
-
-# Deal with 'missing for a reason' guys first!
-
-# some variables' NA are actually informative, for example these actually below aren't missing information, they are indicating values..
-refined_small$DISTRICT_OF_BUDAPEST[is.na(smalldata$DISTRICT_OF_BUDAPEST)] = "OUTSIDE_BUDAPEST"
-refined_small$CREDIT_DEBIT_CODE[is.na(smalldata$CREDIT_DEBIT_CODE)] = "NOT_A_TRANSACTION"
-refined_small$TXN_TYPE[is.na(smalldata$TXN_TYPE)] = "NOT_A_TRANSACTION"
-refined_small$INSTRUMENT[is.na(smalldata$INSTRUMENT)] = "NOT_A_TRANSACTION"
-refined_small$SCOPE[is.na(smalldata$SCOPE)] = "NOT_A_TRANSACTION"
-refined_small$REGION[is.na(smalldata$REGION)] = "NOT_A_TRANSACTION"
-refined_small$BASE_CURRENCY_AMOUNT[is.na(smalldata$BASE_CURRENCY_AMOUNT)] = "NOT_A_TRANSACTION"
 
 #How to deal with BASE_CURRENCY_AMOUNT (missingness is for a reason but it is a continuous variable)
 #Option 1: Impute missing vals and treat as continuous variable (but way too many imputations)
@@ -199,7 +201,7 @@ refined_small$BASE_CURRENCY_AMOUNT=addNA(refined_small$BASE_CURRENCY_AMOUNT)
 sum(is.na(refined_small$BASE_CURRENCY_AMOUNT)) #No NA's, perfect!
 class(refined_small$BASE_CURRENCY_AMOUNT) #converting NA's into Not a transaction
 levels(refined_small$BASE_CURRENCY_AMOUNT)[is.na(levels(refined_small$BASE_CURRENCY_AMOUNT))] = "NOT_A_TRANSACTION" 
-
+table(refined_small$BASE_CURRENCY_AMOUNT)
 # Now deal with 'not missing for a reason' guys! - look for patterns then impute
 
 mrefined_small=refined_small# so don't have to change names when copying carlos code
@@ -243,11 +245,18 @@ sum(is.na(mrefined_small))
 lapply(mrefined_small, class)#obtained all classes, now check what we need to be factors and numeric!
 colnames(mrefined_small) #see column indices for specifying class types
 
-mrefined_small[,c(1,2,4,5,6,7,8,9,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29)]<-as.data.frame(sapply(mrefined_small[,c(1,2,4,5,6,7,8,9,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29)], as.character))
-mrefined_small[,c(10,11,12,19)] <- as.data.frame(sapply(mrefined_small[,c(10,11,12,19)], as.numeric))
+# now convert all character vars to factors and all continuous variables to numeric or int 
+
+vector_attr = names(select_if(mrefined_small,is.integer))
+mrefined_small = mrefined_small %>% mutate_if(names(mrefined_small) %in% vector_attr,as.numeric)
+mrefined_small = mrefined_small %>% mutate_if(is.character,as.factor) %>% mutate_if(is.logical,as.factor)
+
+
+#mrefined_small[,c(1,2,4,5,6,7,8,9,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29)]<-as.data.frame(sapply(mrefined_small[,c(1,2,4,5,6,7,8,9,13,14,15,16,17,18,20,21,22,23,24,25,26,27,28,29)], as.character))
+#mrefined_small[,c(10,11,12,19)] <- as.data.frame(sapply(mrefined_small[,c(10,11,12,19)], as.numeric))
 #mrefined_small$EVENT_DATE<-(as.Date(mrefined_small$EVENT_DATE, format="%m/%d/%Y"))
 #mrefined_small<-arrange(mrefined_small, EVENT_DATE)#ordered earliest to latest
-# as we are no doing out of time test dataset as suggested by Quantexa guy as we had overfitting
+# as we are not doing out of time test dataset as suggested by Quantexa guy as we had overfitting
 str(mrefined_small)
 
 #######################################################
@@ -469,6 +478,7 @@ mrefined_small_ridit<-left_join(mrefined_small_ridit,ridit_tab15,by ='TIME_PERIO
 
 
 # 17.SC01_Amount_Exceding_250000__HUF_ Ridit Scores for tab17
+mrefined_small_ridit$SC01_Amount_Exceding_250000__HUF_<- as.factor(mrefined_small_ridit$SC01_Amount_Exceding_250000__HUF_)
 tab17=prop.table(table(mrefined_small_ridit$SAR,mrefined_small_ridit$SC01_Amount_Exceding_250000__HUF_),2) %>%
   data.frame() %>% 
   filter(Var1==1) %>% 
@@ -730,12 +740,12 @@ colnames(ridit_tab7)=c('BASE_CURRENCY_AMOUNT','RS_BASE_CURRENCY_AMOUNT')
 mrefined_small_ridit<-left_join(mrefined_small_ridit,ridit_tab7,by = 'BASE_CURRENCY_AMOUNT')
 
 
-
+names(mrefined_num_small)
 
 
 rm(list=ls(pattern=c('tab')))
 #remove all the useless variables from mrefined_small_ridit
-mrefined_small_ridit<-subset(mrefined_small_ridit,select=c(3,10,11,12,16,19,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52))# remove original
+#mrefined_small_ridit<-subset(mrefined_small_ridit,select=c(3,10,11,12,16,19,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52))# remove original
 
 
 ## For Continuous ##
@@ -756,12 +766,13 @@ set.seed(123);smple_mrefined_num_small<-mrefined_num_small[sample(1:nrow(mrefine
 ########################################%
 
 ## How many clusters? - GAP Statistic, Answer = 3
-#set.seed(123); clest = Clest(as.matrix(smple_mrefined_num_small), maxK = 5, alpha = 0.1, B = 15, B0 = 5, nstart = 1000)
+set.seed(123); clest = Clest(as.matrix(smple_mrefined_num_small), maxK = 5, alpha = 0.1, B = 15, B0 = 5, nstart = 1000)
 cluster_df_small=mrefined_num_small
 
 ## RS Kmeans
 # I did Clest on subsample of 15000 with carlos and found 3 clusters was best! - did it with alpha=0.1
-#set.seed(123);kperm=KMeansSparseCluster.permute(smple_mrefined_num_small, K=3, nperms = 5)#gets optimum tuning param L1= 2.971735
+set.seed(123);kperm=KMeansSparseCluster.permute(smple_mrefined_num_small, K=3, nperms = 5)#gets optimum tuning param L1= 2.971735
+
 
 set.seed(123); rskm_cl3_small = RSKC(d = mrefined_num_small, ncl = 3, alpha = 0.1, L1 = 2.971735)
 fviz_cluster(list(data = mrefined_num_small, cluster = rskm_cl3_small$labels ),stand = FALSE, geom = "point",
@@ -779,7 +790,7 @@ smalldatacluster<- distcritmulti(matcluster_small,cluster_df_small$labels_rskm_k
                                  count=T,seed=123) #count= subset no printed
 
 smalldatacluster$crit.overall
-#overall average criteria = 0.2629373 (k=3)
+#overall average criteria = 0.2392407 (k=3)
 
 
 ## Evaluation of Clusters - Interpretation ##
@@ -829,7 +840,7 @@ stacked_gg(mrefined_small,mrefined_small$TXN_TYPE,mrefined_small$rskm_k3)#easy
 
 density_gg(mrefined_small,mrefined_small$NUM_ACCOUNTS,mrefined_small$rskm_k3)#hard and not helpful to distinguish between clusters..
 stacked_gg(mrefined_small,mrefined_small$SCENARIO,mrefined_small$rskm_k3)#okay 
-# 5b (not used) if SC16,17,18,21,31,32,38 then cluster 3; else if SC12 then cluster 1; else cluster 1 or 2!
+# 5b (not used) if Sc`6,17,18,21,31,32,38 then cluster 3; else if SC12 then cluster 1; else cluster 1 or 2!
 
 stacked_gg(mrefined_small,mrefined_small$NUM_CASES,mrefined_small$rskm_k3)#hard and not distinguishable
 
@@ -867,9 +878,10 @@ for (i in 1:nrow(mrefined_small))
 
 
 # 
-mrefined_small_ridit$clusterprofile_label_small<-mrefined_small$clusterprofile_label_small
+mrefined_small_ridit$rskm_k3<-mrefined_small$rskm_k3
 
 table(mrefined_small$clusterprofile_label_small)
+table(mrefined_small$rskm_k3)
 
 
 exceptions<-mrefined_small[mrefined_small$clusterprofile_label_small!=mrefined_small$rskm_k3,]
@@ -886,11 +898,11 @@ exceptions<-mrefined_small[mrefined_small$clusterprofile_label_small!=mrefined_s
 ######### Step 6  Model Building #############
 
 ####Creating different datasets for each cluster ##
-cluster1_small = mrefined_small_ridit %>% filter(clusterprofile_label_small == 1) %>%
+cluster1_small = mrefined_small_ridit %>% filter(rskm_k3 == 1) %>%
   select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
-cluster2_small = mrefined_small_ridit %>% filter(clusterprofile_label_small == 2) %>%
+cluster2_small = mrefined_small_ridit %>% filter(rskm_k3 == 2) %>%
   select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
-cluster3_small = mrefined_small_ridit %>% filter(clusterprofile_label_small == 3) %>%
+cluster3_small = mrefined_small_ridit %>% filter(rskm_k3== 3) %>%
   select(SAR, NUM_CASES, NUM_ACCOUNTS, NEW_ACCOUNT_BALANCE, CUSTOMER_FOR_DAYS, contains('RS_'))
 
 
@@ -953,7 +965,7 @@ c1down_boruta_formula=getConfirmedFormula(c1down_boruta)
 c1down_featlist_ordered = attStats(c1down_boruta) %>%
   rownames_to_column(var = 'Features') %>% arrange(desc(medianImp)) %>% select(c('Features','medianImp','decision'))
 
-names_importantfeatures_downsampledatac1 <- (c1_featlist_ordered[c1_featlist_ordered$decision=="Confirmed",'Features']) # features important are these!
+names_importantfeatures_downsampledatac1 <- (c1down_featlist_ordered[c1down_featlist_ordered$decision=="Confirmed",'Features']) # features important are these!
 downsampledatac1<-subset(downsampledatac1,select= names_importantfeatures_downsampledatac1)
 correlation_downc1<-data.frame(cor(downsampledatac1))
 # out of the 13 variables selected watch out for high correl in numaccs, customer for days, numcases and district of budapest
@@ -974,10 +986,25 @@ c1_smote_boruta_formula=getConfirmedFormula(c1_smote_boruta)
 c1smote_featlist_ordered = attStats(c1_smote_boruta) %>%
   rownames_to_column(var = 'Features') %>% arrange(desc(medianImp)) %>% select(c('Features','medianImp','decision'))
 
-names_importantfeatures_smotedatac1 <- (c1smote_featlist_ordered[c1smote_featlist_ordered$decision=="Confirmed",'Features']) # features important are these!
-smotedatac1<-subset(smotedatac1,select= names_importantfeatures_smotedatac1)
+toptenc1<-c1smote_featlist_ordered[1:10,1] # just select top 10
+SAR<-smotedatac1$SAR
+smotedatac1old<-subset(smotedatac1,select=toptenc1)
+smotedatac1_boruta<-cbind(smotedatac1old,SAR)
+smotedatac1_levelnamesunchanged<-smotedatac1_boruta # for XG Boost
+correlationc1<-data.frame(cor(smotedatac1_boruta[,-11]))#all good
+correlationc1
+#High correlation variables:
+#Num_cases and Customer for Days
+#Num_cases vs District of Budapest
+# Check for these in models (especially logistic)
 
-correlation_smotec1<-data.frame(cor(smotedatac1))
+
+
+names_importantfeatures_smotedatac1 <- c(c1smote_featlist_ordered[c1smote_featlist_ordered$decision=="Confirmed",'Features'],'SAR') # features important are these!
+smotedatac1_boruta<-subset(smotedatac1,select= names_importantfeatures_smotedatac1)
+lapply(smotedatac1_boruta,class)
+correlation_smotec1<-data.frame(cor(smotedatac1_boruta[,names(smotedatac1_boruta)!='SAR']))
+correlation_smotec1
 # out of the 19 variables selected watch out for high correl in numaccs, customer for days, numcases and district of budapest
 # just select top 10
 
@@ -999,6 +1026,7 @@ table(c2_rskm_data_train$SAR)
 
 # SMOTE
 set.seed(123); smotedatac2 <- SMOTE(SAR ~ ., c2_rskm_data_train, perc.over = 200, perc.under=150)#balances classes and also doesnt take that much time to run boruta and also not so many observations thrown away
+
 table(smotedatac2$SAR)
 
 ## Feature Reduction ##
@@ -1020,15 +1048,16 @@ c2_smote_boruta_formula=getConfirmedFormula(c2_smote_boruta)
 # The ranked list of most relevant features
 c2_featlist = attStats(c2_smote_boruta) %>%
   rownames_to_column(var = 'Features')
-c2_featlist_ordered1 = subset(c2_featlist, select = c('Features','medianImp')) %>%
+c2_featlist_ordered = subset(c2_featlist, select = c('Features','medianImp')) %>%
   mutate(rank = rank(-c2_featlist$medianImp)) %>% arrange(rank)
-topten<-c2_featlist_ordered1[1:10,1] # just select top 10
+toptenc2<-c2_featlist_ordered[1:10,1] # just select top 10
 SAR<-smotedatac2$SAR
-smotedatac2old<-subset(smotedatac2,select=topten)
-smotedatac2<-cbind(smotedatac2old,SAR)
-correlationc2<-data.frame(cor(smotedatac2[,-11]))#all good
+smotedatac2old<-subset(smotedatac2,select=toptenc2)
+smotedatac2_boruta<-cbind(smotedatac2old,SAR)
+smotedatac2_levelnamesunchanged<- smotedatac2_boruta# for XG Boost
+correlationc2<-data.frame(cor(smotedatac2_boruta[,-11]))#all good
+correlationc2
 #ABR: correl max of 0.62
-
 
 ### Cluster 3 ###
 
@@ -1064,55 +1093,45 @@ c3_smote_boruta_formula=getConfirmedFormula(c3_smote_boruta)
 # The ranked list of most relevant features
 c3_featlist = attStats(c3_smote_boruta) %>%
   rownames_to_column(var = 'Features')
-c3_featlist_ordered1 = subset(c3_featlist, select = c('Features','medianImp')) %>%
+c3_featlist_ordered = subset(c3_featlist, select = c('Features','medianImp')) %>%
   mutate(rank = rank(-c3_featlist$medianImp)) %>% arrange(rank)
-toptenc3<-c3_featlist_ordered1[1:10,1] # just select top 10
-SARc3<-smotedatac3$SAR
+toptenc3<-c3_featlist_ordered[1:10,1] # just select top 10
+SAR<-smotedatac3$SAR
 smotedatac3old<-subset(smotedatac3,select= toptenc3)
-smotedatac3<-cbind(smotedatac3old,SARc3)
-names(smotedatac3)[11]<-c("SAR")
-correlationc3<-data.frame(cor(smotedatac3[,-11]))
+smotedatac3_boruta<-cbind(smotedatac3old,SAR)
+smotedatac3_levelnamesunchanged <- smotedatac3_boruta# for XG Boost
+correlationc3<-data.frame(cor(smotedatac3_boruta[,-11]))
 # Scenario and CD code have 0.71 correl, careful
-
-
+names(smotedatac3_boruta)
+lapply(smotedatac3_boruta,class)
+correlationc3
 #################################%
 #### Step 7 - Model Building ####
 #################################%
 
-## a)XGBoost - Cluster 1 (do this first because we dont use train function for this and dont covert 1 and 0 to x1 and x2 yet)##
 
-smotedatac1noresponse<-smotedatac1[,-1]
-
-set.seed(123)
-xgb_params_1 = list(
-  objective = "binary:logistic",                                               # binary classification
-  eta = 0.01,                                                                  # learning rate
-  max.depth = 3,                                                               # max tree depth
-  eval_metric = "auc"                                                          # evaluation/loss metric
-)
-
-# fit the model with the arbitrary parameters specified above
-xgb_1 = xgboost(data = as.matrix(smotedatac1noresponse),
-                label = as.numeric(as.character(smotedatac1$SAR)),
-                params = xgb_params_1,
-                nrounds = 100,                                                 # max number of trees to build
-                verbose = TRUE,                                         
-                print_every_n = 1,
-                early_stopping_rounds = 10)
-#best AUC 97.3%
-
-## b)Logistic Regression - Cluster 1 ##
+## a)Logistic Regression - Cluster 1 ####
 
 #need to do this first to get syntactically correct level names for my factor variables (only SAR)
-feature.names=names(smotedatac1)
+feature.names=names(smotedatac1_boruta)
 
+# for smotedatac1_boruta with 10 variables
 for (f in feature.names) {
-  if (class(smotedatac1[[f]])=="factor") {
-    levels <- unique(c(smotedatac1[[f]]))
-    smotedatac1[[f]] <- factor(smotedatac1[[f]],
+  if (class(smotedatac1_boruta[[f]])=="factor") {
+    levels <- unique(c(smotedatac1_boruta[[f]]))
+    smotedatac1_boruta[[f]] <- factor(smotedatac1_boruta[[f]],
                                labels=make.names(levels))
   }
 }
+
+
+
+
+
+
+b = paste(c1smote_featlist_ordered$Features[1:10], collapse = ' + '); formula_b = paste('SAR ~ ',b,sep = '');b
+# shortcut for variables to be added into model for lm statement!
+
 
 # We specify the type of evaluation we want to do
 train_control <- trainControl(method="cv",number=10,savePredictions=TRUE,summaryFunction=twoClassSummary,classProbs=TRUE)#10 fold cross validation,saves probs and preds predicted by 10 models
@@ -1121,38 +1140,91 @@ train_control <- trainControl(method="cv",number=10,savePredictions=TRUE,summary
 
 ## Brief Data Exploration ##
 # Is scale imprtant? Not for logistic apparently - https://stats.stackexchange.com/questions/48360/is-standardization-needed-before-fitting-logistic-regression
-summary(smotedatac1)
-sd(smotedatac1$NUM_CASES)
-sd(smotedatac1$CUSTOMER_FOR_DAYS)#SD is a lot larger
-sd(smotedatac1$NUM_ACCOUNTS)
-sd(smotedatac1$RS_SCENARIO)
+summary(smotedatac1_boruta)
+sd(smotedatac1_boruta$NUM_CASES)
+sd(smotedatac1_boruta$CUSTOMER_FOR_DAYS)#SD is a lot larger, still not a concern for logistic model building!
+sd(smotedatac1_boruta$NUM_ACCOUNTS)
+sd(smotedatac1_boruta$RS_SCENARIO)
 
-# Stepwise selection
-null <- glm(SAR ~ 1,family=binomial, data = smotedatac1)
-full <- glm(SAR ~ .,family=binomial, data = smotedatac1)
-step_null_both<-stepAIC(null, scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION,lower = ~ 1), direction = "both")
-step_full_both<-stepAIC(full,scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION, lower = ~ 1), direction = "both")
-step_null_for<-stepAIC(null, scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION, lower = ~ 1), direction = "forward")
-step_full_for<-stepAIC(full,scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION, lower = ~ 1), direction = "forward")
-step_null_back<-stepAIC(null, scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION, lower = ~ 1), direction = "backward")
-step_full_back<-stepAIC(full,scope=list(upper = ~ NUM_CASES+NEW_ACCOUNT_BALANCE+RS_BASE_CURRENCY_AMOUNT+RS_EVENT_MONTH+RS_SCENARIO+NUM_ACCOUNTS+CUSTOMER_FOR_DAYS+RS_REGION+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION, lower = ~ 1), direction = "backward")
+# i)All subsets regression ####
+allsubset_df_c1_small = cbind(smotedatac1_boruta[c1_featlist_ordered$Features[1:10]],smotedatac1_boruta$SAR)
+
+subset_c1_small = bestglm(Xy = allsubset_df_c1_small,
+                    family = binomial,
+                    IC = "AIC",                
+                    method = "exhaustive")
+
+subset_c1_small$BestModels
+
+
+#Model 2 suggests removing Raised on, num_accounts and New_account_balance and still AIC good enough (5203.528)
+#hence by simplicity, go for model2 from above
+
+#MOdel cluster1 
+model_allsubsets_cl1_small<- train(SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS + RS_PEP_FLAG + RS_DISTRICT_OF_BUDAPEST + RS_TIME_PERIOD ,data= smotedatac1_boruta, method = "glm", family='binomial',
+                         trControl=train_control,metric='ROC')
+vif(smotedatac1_boruta[,names(smotedatac1_boruta)!='SAR'])
+
+#Multicollinearity does not seem detrimental to interpretation of regression coeff's
+model_allsubsets_cl1_small #0.92 ROC on 10 fold CV!
+
+
+
+
+# ii)Stepwise selection ####
+null <- glm(SAR ~ 1,family=binomial, data = smotedatac1_boruta)
+full <- glm(SAR ~ .,family=binomial, data = smotedatac1_boruta)
+step_null_both<-stepAIC(null, scope=list(upper = ~ NUM_CASES + RS_RAISED_ON + RS_SCENARIO + RS_TIME_PERIOD + RS_DISTRICT_OF_BUDAPEST + RS_PEP_FLAG + CUSTOMER_FOR_DAYS + NEW_ACCOUNT_BALANCE + RS_CUSTOMER_REGION + RS_ORIGINAL_ACCOUNT_CURRENCY,lower = ~ 1), direction = "both")
+#suggests removing raised on and num_accounts
+
+step_null_for<-stepAIC(null, scope=list(upper = ~ NUM_CASES + RS_RAISED_ON + RS_SCENARIO + RS_TIME_PERIOD + RS_DISTRICT_OF_BUDAPEST + RS_PEP_FLAG + CUSTOMER_FOR_DAYS + NEW_ACCOUNT_BALANCE + RS_CUSTOMER_REGION + RS_ORIGINAL_ACCOUNT_CURRENCY, lower = ~ 1), direction = "forward")
+#suggests removing raised on and num_accounts
 
 step_null_both$anova
-step_full_both$anova
-step_null_for$anova
-step_full_for$anova
-step_null_back$anova
-step_full_back$anova
 
-# Models proposed
-set.seed(123)
-model1<-train(SAR ~ NUM_CASES + NEW_ACCOUNT_BALANCE + RS_BASE_CURRENCY_AMOUNT + 
-                RS_EVENT_MONTH + RS_SCENARIO + NUM_ACCOUNTS + CUSTOMER_FOR_DAYS + 
-                RS_REGION + RS_BUSINESS_TYPE2 + RS_CUSTOMER_REGION,data=smotedatac1,method="glm", family="binomial",trControl=train_control,metric='ROC')
-summary(model1)
+step_null_for$anova
+
+
+model2_stepwise_cl1_small<- train(SAR ~  CUSTOMER_FOR_DAYS + RS_TIME_PERIOD + RS_CUSTOMER_REGION + 
+                                    RS_SCENARIO + RS_DISTRICT_OF_BUDAPEST + NUM_CASES + RS_RAISED_ON + 
+                                    RS_ORIGINAL_ACCOUNT_CURRENCY + RS_PEP_FLAG + NEW_ACCOUNT_BALANCE ,data= smotedatac1_boruta, method = "glm", family='binomial',
+                                  trControl=train_control,metric='ROC')
+
+model2_stepwise_cl1_small
+
+#Time period is the variable which is removed extra by all subsets regression compared to stepwise selection regression
+
+# AUC 0.8632% ####
+
+
+
+
+model1_allsubsets<- glm(SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS +  RS_PEP_FLAG +RS_DISTRICT_OF_BUDAPEST + RS_CUSTOMER_REGION,data= smotedatac1_boruta, family='binomial')
+model2_stepwise<- glm(SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS +  RS_PEP_FLAG +RS_DISTRICT_OF_BUDAPEST + RS_CUSTOMER_REGION + RS_TIME_PERIOD ,data= smotedatac1_boruta, family='binomial')
+
+#compare two models by anova
+anova(model1_allsubsets, model2_stepwise)
+
+
+#lets check by LRT if it is significant
+library(lmtest)
+lrtest(model1_allsubsets, model2_stepwise)
+AIC(model1_allsubsets, model2_stepwise)
+
+#Not really significant, performance wise (in terms of ROC and Sensitivity) they perform almost same
+#still to be sure, let's check if there is correlation of time_period with other variables
+
+correlation_smotec1<-data.frame(cor(smotedatac1_boruta[,names(smotedatac1_boruta)!='SAR']))
+#as time period doesnt have substantial correlation with other variables, it is safer to be included in the model
+
+#Hence model2_stepwise_cl1_small is final logistic model
+summary(model2_stepwise)#final
+
+car::vif(model2_stepwise) #multicollinearity not an issue as all VIF's less than 5!
+
 #no separation because coeffs and std errors are all okay!
 
-vif(model1)#doesnt work for train object in R but correlations for all of smotedatac1 are all good
+
 
 ## Some Comments: ##
 ## 4. If want to know what models avail in caret use names(getModelInfo())
@@ -1162,429 +1234,736 @@ vif(model1)#doesnt work for train object in R but correlations for all of smoted
 
 # Evaluation
 
-# Calculate AUC and rank
-AUC_logistic<-model1$results[2]#kfold cv AUC = 89% - pretty good!
+# Calculate AUC and rank logistic cluster 1####
+AUC_logistic<-model2_stepwise_cl1_small$results[2];AUC_logistic#kfold cv AUC = 92% - pretty good!
 
 ########################################################################%
-#### Sidenote: Maybe in future I can use this to get improved model ####
+#### Sidenote: Maybe in future I can use this to get improved model 
 ########################################################################%
 
-# Can i improve model3 with higher order terms or interactions? 
+# Can i improve model2_stepwise (final model) with higher order terms or interactions (only for numeric predictors)? ####
 #Devicance residual vs each continuous predictor
-r.dev <- residuals(model3, type = "deviance")
-par(mfrow=c(2,2))
+r.dev <- residuals(model2_stepwise, type = "deviance")
+par(mfrow=c(1,2))
 
 # Customer for days
-plot(smotedatac1$CUSTOMER_FOR_DAYS,r.dev,xlab="CUSTOMER_FOR_DAYS",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
-loess.dev <- loess(r.dev~smotedatac1$CUSTOMER_FOR_DAYS)
+plot(smotedatac1_boruta$CUSTOMER_FOR_DAYS,r.dev,xlab="CUSTOMER_FOR_DAYS",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
+loess.dev <- loess(r.dev~smotedatac1_boruta$CUSTOMER_FOR_DAYS)
 lo.pred <- predict(loess.dev, se=T)
-ordercust <- order(smotedatac1$CUSTOMER_FOR_DAYS)
-lines(smotedatac1$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust],col="blue",lwd=3)
-lines(smotedatac1$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust]+2*lo.pred$s[ordercust], lty=2,col="red")
-lines(smotedatac1$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust]-2*lo.pred$s[ordercust], lty=2,col="red")
+ordercust <- order(smotedatac1_boruta$CUSTOMER_FOR_DAYS)
+lines(smotedatac1_boruta$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust],col="blue",lwd=3)
+lines(smotedatac1_boruta$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust]+2*lo.pred$s[ordercust], lty=2,col="red")
+lines(smotedatac1_boruta$CUSTOMER_FOR_DAYS[ordercust],lo.pred$fit[ordercust]-2*lo.pred$s[ordercust], lty=2,col="red")
+#maybe quadratic
+
+
+
+# NUM_CASES
+plot(smotedatac1_boruta$NUM_CASES,r.dev,xlab="NUM_CASES",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
+loess.dev <- loess(r.dev~smotedatac1_boruta$NUM_CASES)
+lo.pred <- predict(loess.dev, se=T)
+orderacc <- order(smotedatac1_boruta$NUM_CASES)
+lines(smotedatac1_boruta$NUM_CASES[orderacc],lo.pred$fit[orderacc],col="blue",lwd=3)
+lines(smotedatac1_boruta$NUM_CASES[orderacc],lo.pred$fit[orderacc]+2*lo.pred$s[orderacc], lty=2,col="red")
+lines(smotedatac1_boruta$NUM_CASES[orderacc],lo.pred$fit[orderacc]-2*lo.pred$s[orderacc], lty=2,col="red")
 #maybe quadrtatic
 
-# RS_TIME_PERIOD
-plot(smotedatac1$RS_TIME_PERIOD,r.dev,xlab="RS_TIME_PERIOD",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
-loess.dev <- loess(r.dev~smotedatac1$RS_TIME_PERIOD)
-lo.pred <- predict(loess.dev, se=T)
-ordertimeper <- order(smotedatac1$RS_TIME_PERIOD)
-lines(smotedatac1$RS_TIME_PERIOD[ordertimeper],lo.pred$fit[ordertimeper],col="blue",lwd=3)
-lines(smotedatac1$RS_TIME_PERIOD[ordertimeper],lo.pred$fit[ordertimeper]+2*lo.pred$s[ordertimeper], lty=2,col="red")
-lines(smotedatac1$RS_TIME_PERIOD[ordertimeper],lo.pred$fit[ordertimeper]-2*lo.pred$s[ordertimeper], lty=2,col="red")
-#maybe quadrtatic or cubic
 
-# RS_CUSTOMER_REGION
-plot(smotedatac1$RS_CUSTOMER_REGION,r.dev,xlab="RS_CUSTOMER_REGION",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
-loess.dev <- loess(r.dev~smotedatac1$RS_CUSTOMER_REGION)
-lo.pred <- predict(loess.dev, se=T)
-orderregion <- order(smotedatac1$RS_CUSTOMER_REGION)
-lines(smotedatac1$RS_CUSTOMER_REGION[orderregion],lo.pred$fit[orderregion],col="blue",lwd=3)
-lines(smotedatac1$RS_CUSTOMER_REGION[orderregion],lo.pred$fit[orderregion]+2*lo.pred$s[orderregion], lty=2,col="red")
-lines(smotedatac1$RS_CUSTOMER_REGION[orderregion],lo.pred$fit[orderregion]-2*lo.pred$s[orderregion], lty=2,col="red")
-# probably not quadratic
+# some new models to try but first standardise (use SAR level names unchanged smote data)
+n<-dim(smotedatac1_boruta)[1]
+smotedatac1_boruta.stand<-scale(smotedatac1_boruta[,names(smotedatac1_boruta)!='SAR'],center=TRUE,scale=TRUE)/sqrt(n - 1) #except SAR, standardize others
+smotedatac1_boruta.stand<-data.frame(smotedatac1_boruta.stand)
+smotedatac1_boruta.stand<-cbind(smotedatac1_boruta$SAR,smotedatac1_boruta.stand)
 
-# NUM_ACCOUNTS
-plot(smotedatac1$NUM_ACCOUNTS,r.dev,xlab="NUM_ACCOUNTS",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
-loess.dev <- loess(r.dev~smotedatac1$NUM_ACCOUNTS)
-lo.pred <- predict(loess.dev, se=T)
-orderacc <- order(smotedatac1$NUM_ACCOUNTS)
-lines(smotedatac1$NUM_ACCOUNTS[orderacc],lo.pred$fit[orderacc],col="blue",lwd=3)
-lines(smotedatac1$NUM_ACCOUNTS[orderacc],lo.pred$fit[orderacc]+2*lo.pred$s[orderacc], lty=2,col="red")
-lines(smotedatac1$NUM_ACCOUNTS[orderacc],lo.pred$fit[orderacc]-2*lo.pred$s[orderacc], lty=2,col="red")
-#maybe quadrtatic
+model2_stepwise_highordterms_cl1_small<-glm(SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS +  RS_PEP_FLAG +RS_DISTRICT_OF_BUDAPEST + RS_CUSTOMER_REGION + RS_TIME_PERIOD
+            + I(CUSTOMER_FOR_DAYS^2) +I(NUM_CASES^2),family=binomial, data = smotedatac1_boruta.stand)
+summary(model2_stepwise_highordterms_cl1_small)
+car::vif(model2_stepwise_highordterms_cl1_small)#no of cases inflated, so lets avoid it and see how it goes
 
-# RS_SCENARIO
-plot(smotedatac1$RS_SCENARIO,r.dev,xlab="RS_SCENARIO",ylab="Deviance residual", cex.lab=1.5,cex.axis=1.3, ylim=c(-3,3))
-loess.dev <- loess(r.dev~smotedatac1$RS_SCENARIO)
-lo.pred <- predict(loess.dev, se=T)
-orderscen <- order(smotedatac1$RS_SCENARIO)
-lines(smotedatac1$RS_SCENARIO[orderscen],lo.pred$fit[orderscen],col="blue",lwd=3)
-lines(smotedatac1$RS_SCENARIO[orderscen],lo.pred$fit[orderscen]+2*lo.pred$s[orderscen], lty=2,col="red")
-lines(smotedatac1$RS_SCENARIO[orderscen],lo.pred$fit[orderscen]-2*lo.pred$s[orderscen], lty=2,col="red")
-#nothing I think
 
-# some new models to try but first standardise
-n<-dim(smotedatac1)[1]
-smotedatac1.stand<-scale(smotedatac1[,2:11],center=TRUE,scale=TRUE)/sqrt(n - 1)
-smotedatac1.stand<-data.frame(smotedatac1.stand)
-smotedatac1.stand<-cbind(smotedatac1$SAR,smotedatac1.stand)
-colnames(smotedatac1.stand)[1] <- "SAR"
-model6<-glm(SAR ~ CUSTOMER_FOR_DAYS + RS_TIME_PERIOD + RS_CUSTOMER_REGION + 
-              NUM_ACCOUNTS + RS_SCENARIO + RS_SC01_Amount_Exceding_250000__HUF_
-            + I(NUM_ACCOUNTS^2) + I(RS_TIME_PERIOD^2) + I(CUSTOMER_FOR_DAYS^2) ,family=binomial, data = smotedatac1.stand)
-vif(model6)#no problems
-summary(model6)#very large standard deviations! separation?
-#AIC for model 6 is promising and substantially lower than the other models even though more params, therefore I should explore possibility of ridge here
+model2_stepwise_highordterms2_cl1_small<-glm(SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS +  RS_PEP_FLAG +RS_DISTRICT_OF_BUDAPEST + RS_CUSTOMER_REGION + RS_TIME_PERIOD
+                                            + I(CUSTOMER_FOR_DAYS^2),family=binomial, data = smotedatac1_boruta.stand)
+car::vif(model2_stepwise_highordterms2_cl1_small) # still num_cases inflated (>10). So ridge 
+
+summary(model2_stepwise_highordterms2_cl1_small)#very large standard deviations and High AIC! separation?
+
+
+AIC(model2_stepwise_highordterms_cl1_small)
+#AIC for model above is promising and substantially lower than the other models even though more params, therefore I should explore possibility of ridge here
 #after trying AUC it performs awfully but may as well try ridge!
-summary(model6)
 
-## Ridge Regression for model 6 ##
-matsmote<-as.matrix(smotedatac1[,-1])
-mattrain<-as.matrix(c1_rskm_data_train[,-1])
-set.seed(123)
-cv.ridge <- cv.glmnet(matsmote, smotedatac1$SAR, family='binomial', alpha=0, parallel=TRUE, standardize=TRUE, type.measure='auc')
+
+## Ridge Regression for model above ##
+library(ridge)
+
+#model2_stepwise_highordterms_cl1_small_ridge <- logisticRidge(smotedatac1$SAR ~ NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + RS_SCENARIO + CUSTOMER_FOR_DAYS +  RS_PEP_FLAG +RS_DISTRICT_OF_BUDAPEST + RS_CUSTOMER_REGION + RS_TIME_PERIOD
+                                                              #+ I(CUSTOMER_FOR_DAYS^2) ,data = smotedatac1_boruta.stand, lambda = "automatic",nPCs = null)
+matsmote<-data.matrix(smotedatac1[,-1])
+mattrain<-data.matrix(c1_rskm_data_train[,-1])
+#glmnet prefers data.matrix over as.matrix! https://stackoverflow.com/questions/8458233/r-glmnet-as-matrix-error-message
+library(glmnet)
+cv.ridge <- cv.glmnet(matsmote, smotedatac1$SAR, family='binomial', alpha=0, standardize=TRUE, type.measure='auc')
 plot(cv.ridge$glmnet.fit, label = T)
 coef(cv.ridge, s = "lambda.min")
 
 # ROC Curve Evaluation using training dataset
-pred_mod1 = predict(model1,c1_rskm_data_train, type = "response")
-pred_mod2 = predict(model2,c1_rskm_data_train, type = "response")
-pred_mod3 = predict(model3,c1_rskm_data_train, type = "response")
-pred_mod4 = predict(model4,c1_rskm_data_train, type = "response")
-pred_mod5 = predict(model5,c1_rskm_data_train, type = "response")
-pred_mod6 = predict(cv.ridge,mattrain,s="lambda.min", type = "response")
+pred_stepwise = predict(model2_stepwise,c1_rskm_data_train, type = "response")
+pred_ridge = predict(cv.ridge,mattrain,s="lambda.min", type = "response")
 par(mfrow=c(1,1))
-colAUC(cbind(pred_mod1,pred_mod2,pred_mod3,pred_mod4,pred_mod5,pred_mod6),smotedatac1$SAR, plotROC = TRUE)
+colAUC(cbind(pred_stepwise,pred_ridge), c1_rskm_data_train$SAR, plotROC = TRUE)
 #model4 is best now - however its best to use training dataset not smoted data set to evaluate as at least we get little bit of idea 
 # of how it would perform out of sample
 # return to this if find out how to evaluate ridge model using training data set
 
 #### Continuation ###
 
-## c) Decision Tree - Cluster 1 ##
+## b) Decision Tree - Cluster 1 ####
 
 #train model
-set.seed(123)
-dec_tree1<-train(SAR ~ .,data=smotedatac1,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')#97.77% AUC is best cp=0.0006211180, maybe try different cp value of 0.0012422360?
+set.seed(123);dec_tree1<-train(SAR ~ .,data=smotedatac1_boruta,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')
+dec_tree1
+#98% AUC ####
+library(rpart)
 par(mfrow=c(1,2))
 fancyRpartPlot(dec_tree1$finalModel,uniform=TRUE, main="Best Tree")
 # http://rstatistics.net/decision-trees-with-r/ - see this for info
 
 #interpretting
-varimp1<-varImp(dec_tree1)
+varimp1<-varImp(dec_tree1);varimp1
 
-## d) Random Forest - Cluster 1 ##
+
+#Conditional Inference
+set.seed(123);cond_tree1<-train(SAR ~ .,data=smotedatac1_boruta,method='ctree',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
+par(mfrow=c(1,1))
+cond_tree1$finalModel
+
+## c) Random Forest - Cluster 1 ####
 
 #now to see what params to tune for random forest
-paramgrid<-expand.grid(mtry=c(2:10)) #10 is the number of vars we are using so can't be greater than this
-
+paramgrid<-expand.grid(mtry=c(2:10) ,splitrule = "gini"
+                       ,min.node.size = 1) #10 is the number of vars we are using so can't be greater than this
+# 1 is the default min node size for classfication= hence we go with that!
 #train model
 set.seed(123)#to reproduce results
-ran_forestc1<-train(SAR ~ ., data = smotedatac1,method='rf',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC')
-# selected only a few features here but takes a long time for this - too long to select features we had before Boruta!
-# AUC = 0.9908528
+ran_forestc1<-train(SAR ~ ., data = smotedatac1_boruta,method='ranger',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC')
+ran_forestc1# selected only a few features here but takes a long time for this - too long to select features we had before Boruta!
+# AUC = 0.9853  ####
+
+
+#d) Logistic Model Tree - Interpretable Ensemble ####
+set.seed(123); LMT_c1 = train(SAR ~ ., method= 'LMT', metric="ROC", 
+                              tuneLength=10, trControl=train_control, data = smotedatac1_boruta)
+#97.89% ROC ####
+#significantly different from other models, even better than RF!! 
+LMT_c1
+
+
+
 
 ## e) LogitBoost - Cluster 1 ##
 
 # Model Estimation
-smotedatac1noresponse<-smotedatac1[,-1]
+smotedatac1noresponse<-smotedatac1_boruta[,-11]
 set.seed(123)
 paramgrid<-expand.grid(nIter=c(2:11))
-logitboost <- train(smotedatac1noresponse, smotedatac1$SAR, 
+logitboost_c1 <- train(smotedatac1noresponse, smotedatac1_boruta$SAR, 
                     method = "LogitBoost", 
                     trControl = train_control,
                     metric = "ROC",tuneGrid=paramgrid,tuneLength = 1)
-# with more iterations the results get better, rule of thumb use nIter=no. vars (AUC=97%%)
+# with more iterations the results get better, rule of thumb use nIter=no. vars 
+logitboost_c1 #AUC=97.26% ####
 
-#according to all models randomforest out of the blackbox models while decision tree was best out of white box models
+
+
+## f) XGBoost- Cluster 1 ####
+
+xgb_grid_c1 = expand.grid(
+  nrounds = 1000,
+  eta = c(0.01,0.1,0.2),
+  max_depth = c(4,6,8),
+  gamma = c(0,0.5,1),
+  colsample_bytree = 0.75,
+  min_child_weight = c(0, 2, 5),
+  subsample = 0.5
+)
+#where eta is learning rate, max_depth(of tree), gamma=
+
+
+xgb_c1 = train(smotedatac1_levelnamesunchanged[,-11], smotedatac1_levelnamesunchanged$SAR, method = "xgbTree",
+               trControl = train_control, tuneGrid = xgb_grid_c1)
+
+xgb_c1$finalModel  #AUC 0.9854840 ####
+# max_depth = 6, eta = 0.01, gamma = 0, colsample_bytree =
+# 0.75, min_child_weight = 2 and subsample = 0.5.
+
+
+
+# Conclusion cluster 1 ####
+#according to all models LMT and RF 
+# while decision tree (96.88%!) was still equal as above models!
+
 
 #models for Cluster 2 ####
 
-## a) XGBoost - Cluster 2 ##
 
-smotedatac2noresponse<-smotedatac2[,-11]
+## a) Logistic Regression - Cluster 2 ####
 
-set.seed(123)
-xgb_params_2 = list(
-  objective = "binary:logistic",                                               # binary classification
-  eta = 0.01,                                                                  # learning rate
-  max.depth = 3,                                                               # max tree depth
-  eval_metric = "auc"                                                          # evaluation/loss metric
-)
+#need to do this first to get syntactically correct level names for my factor variables (only SAR)
+feature.names2=names(smotedatac2_boruta)
 
-# fit the model with the arbitrary parameters specified above
-xgb_2 = xgboost(data = as.matrix(smotedatac2noresponse),
-                label = as.numeric(as.character(smotedatac2$SAR)),
-                params = xgb_params_1,
-                nrounds = 100,                                                 # max number of trees to build
-                verbose = TRUE,                                         
-                print_every_n = 1,
-                early_stopping_rounds = 10)
-#AUC=83%
-
-## b) Logistic Regression - Cluster 2 ##
-
-#need to convert features to this form to build models properly
-feature.names=names(smotedatac2)
-
-for (f in feature.names) {
-  if (class(smotedatac2[[f]])=="factor") {
-    levels <- unique(c(smotedatac2[[f]]))
-    smotedatac2[[f]] <- factor(smotedatac2[[f]],
-                               labels=make.names(levels))
+# for smotedatac2_boruta with 10 variables
+for (f in feature.names2) {
+  if (class(smotedatac2_boruta[[f]])=="factor") {
+    levels <- unique(c(smotedatac2_boruta[[f]]))
+    smotedatac2_boruta[[f]] <- factor(smotedatac2_boruta[[f]],
+                                      labels=make.names(levels))
   }
 }
 
 
+b2 = paste(toptenc2, collapse = ' + '); formula_b = paste('SAR ~ ',b,sep = '');b2
+# shortcut for variables to be added into model for lm statement!
+
+
+# We specify the type of evaluation we want to do
+train_control <- trainControl(method="cv",number=10,savePredictions=TRUE,summaryFunction=twoClassSummary,classProbs=TRUE)#10 fold cross validation,saves probs and preds predicted by 10 models
+#summaryFunction argument makes it possible to choose mtry based on AUC (use metric="ROC")
+
+
 ## Brief Data Exploration ##
 # Is scale imprtant? Not for logistic apparently - https://stats.stackexchange.com/questions/48360/is-standardization-needed-before-fitting-logistic-regression
-summary(smotedatac2)
-sd(smotedatac2$NUM_CASES)
-sd(smotedatac2$CUSTOMER_FOR_DAYS)#SD is a lot larger
-sd(smotedatac2$NUM_ACCOUNTS)
-#tree based models and c2gression - scale doesnt matter for contin vars
+summary(smotedatac2_boruta)
+sd(smotedatac2_boruta$NUM_CASES)
+sd(smotedatac2_boruta$CUSTOMER_FOR_DAYS)#SD is a lot larger, still not a concern for logistic model building!
+sd(smotedatac2_boruta$NUM_ACCOUNTS)
+sd(smotedatac2_boruta$RS_SCENARIO)
 
-# Stepwise selection
-nullc2 <- glm(SAR ~ 1,family=binomial, data = smotedatac2)
-fullc2 <- glm(SAR ~ .,family=binomial, data = smotedatac2)
+
+# i)All subsets regression ####
+allsubset_df_c2_small = cbind(smotedatac2_boruta[c2_featlist_ordered$Features[1:10]],smotedatac2_boruta$SAR)
+
+subset_c2_small = bestglm(Xy = allsubset_df_c2_small,
+                          family = binomial,
+                          IC = "AIC",                
+                          method = "exhaustive")
+
+subset_c2_small$BestModels
+
+#Model 2 suggests removing New account balance and rs_customer region and still AIC good enough (10336.27)
+#hence by simplicity, go for model2 from above
+
+#MOdel cluster1 
+model_allsubsets_cl2_small <- train(SAR ~NUM_CASES + RS_SC01_Amount_Exceding_250000__HUF_ + CUSTOMER_FOR_DAYS + NUM_ACCOUNTS + RS_RAISED_ON + RS_EVENT_MONTH  + RS_SCENARIO + RS_CUSTOMER_REGION + RS_ORIGINAL_ACCOUNT_CURRENCY,data= smotedatac2_boruta, method = "glm", family='binomial',
+                                   trControl=train_control,metric='ROC')
+model_cl2_small_glm<- glm(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + RS_SC01_Amount_Exceding_250000__HUF_ + NUM_ACCOUNTS + RS_RAISED_ON + RS_EVENT_MONTH + RS_DISTRICT_OF_BUDAPEST + RS_SCENARIO
+                          ,data= smotedatac2_boruta,family='binomial')
+
+model_allsubsets_cl2_small #0.84 ROC on 10 fold CV!
+
+
+
+
+
+
+
+# Stepwise selection cluster 2 ####
+nullc2 <- glm(SAR ~ 1,family=binomial, data = smotedatac2_boruta)
+fullc2 <- glm(SAR ~ .,family=binomial, data = smotedatac2_boruta)
 
 detach(data)
 detach(smotedatac2)
 attach(smotedatac2)
 
-## continue from here tomorrow ##
+
 step_null_bothc2<-step(nullc2, scope=list(lower=nullc2, upper=fullc2), direction="both")
-step_full_bothc2<-step(fullc2, scope=list(lower=nullc2, upper=fullc2), direction="both")
+
 step_null_forc2<-step(nullc2, scope=list(lower=nullc2, upper=fullc2), direction="forward")
-step_full_forc2<-step(fullc2, scope=list(lower=nullc2, upper=fullc2), direction="forward")
-step_null_backc2<-step(nullc2, scope=list(lower=nullc2, upper=fullc2), direction="backward")
-step_full_backc2<-step(fullc2, scope=list(lower=nullc2, upper=fullc2), direction="backward")
+
 
 step_null_bothc2$formula
-step_full_bothc2$formula
+
+
 step_null_forc2$formula
-step_full_forc2$formula
-step_null_backc2$formula
-step_full_backc2$formula
 
-# Models proposed
-model1c2<-train(SAR ~ NUM_ACCOUNTS + RS_EVENT_MONTH + RS_DISTRICT_OF_BUDAPEST + 
-                  CUSTOMER_FOR_DAYS + RS_ORIGINAL_ACCOUNT_CURRENCY + RS_BUSINESS_TYPE2 + 
-                  RS_CUSTOMER_STATUS + NEW_ACCOUNT_BALANCE,data=smotedatac2,method="glm", family="binomial",trControl=train_control,metric='ROC')
-model2c2<-train(SAR ~ NUM_CASES + CUSTOMER_FOR_DAYS + RS_EVENT_MONTH + NUM_ACCOUNTS + 
-                  RS_CUSTOMER_STATUS + RS_BUSINESS_TYPE2 + RS_DISTRICT_OF_BUDAPEST + 
-                  RS_CUSTOMER_REGION + RS_ORIGINAL_ACCOUNT_CURRENCY + NEW_ACCOUNT_BALANCE
-                ,data=smotedatac2,method="glm", family="binomial",trControl=train_control,metric='ROC')
-summary(model1c2);BIC(model1c2)
-summary(model2c2);BIC(model2c2)
-#model1 has best AIC but AUC is 0.7284 
+# Model extra proposed = adding 'RS_Customerregion' to the model from all subets above
+model_stepwise_cl2_small<-train(SAR ~ RS_SC01_Amount_Exceding_250000__HUF_ + NUM_ACCOUNTS + NUM_CASES + 
+                  RS_DISTRICT_OF_BUDAPEST + RS_SCENARIO + RS_EVENT_MONTH + 
+                  CUSTOMER_FOR_DAYS + RS_RAISED_ON + RS_CUSTOMER_REGION,data=smotedatac2_boruta,method="glm", family="binomial",trControl=train_control,metric='ROC')
 
+summary(model_stepwise_cl2_small) #final logistic
+#ROC 0.84 on 10 fold CV for logistic ####
+
+#model all subsets is simpler and similar in performance (Both AIC and ROC), hence select it
 # Multicolinearity
-vif(model1c2)
-vif(model2c2)
-#this doesnt work for train fucntion but no issues with correlations - all well below 0.5
+car::vif(model_cl2_small_glm)
+#no issues with correlations - all well below 0.5
 
-## c) Decision Tree - Cluster 2 ##
+## b) Decision Tree - Cluster 2 ####
 
 #train model
-set.seed(123)
-dec_tree3<-train(SAR ~ .,data=smotedatac2,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
+set.seed(123);dec_tree2<-train(SAR ~ .,data=smotedatac2_boruta,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
 par(mfrow=c(1,1))
-fancyRpartPlot(dec_tree3$finalModel,uniform=TRUE, main="Best Tree")
+dec_tree2$finalModel # best dec tree has AUC=0.9121 ####
+
+#Conditional Inference
+set.seed(123);cond_tree2<-train(SAR ~ .,data=smotedatac2_boruta,method='ctree',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
+par(mfrow=c(1,1))
+cond_tree2$finalModel # best dec tree has AUC=0.9102 ####
+cond_tree2
+
+table(cluster1_small$RS_SC01_Amount_Exceding_250000__HUF_)
+table(cluster1_small$RS_RAISED_ON, cluster1_small$SAR)
+# 1st Amount > 25K , 2nd Num_cases >=0.5 , 3rd Num_cases>=1.5 , 4th Num_Accounts>=1.5  5th Customer_for_days<401.5...
+
+
 # http://rstatistics.net/decision-trees-with-r/ - see this for info
-# 
-# best dec tree has AUC=0.8949722 
+dec_tree2
+# best dec tree has AUC=0.9058 ####
 
 #interpretting
-varimp3<-varImp(dec_tree3)
+varimp2<-varImp(dec_tree2);varimp2
+#Amount>25k, Raised on = Client, Num cases >0.5 and then >1.5, Scenario,District of Budapest..
 
-## d) Random Forest - Cluster 2 ##
+## c) Random Forest - Cluster 2 ####
 
 #now to see what params to tune for random forest
-paramgrid<-expand.grid(mtry=c(2:10)) #10 is the number of vars we are using so can't be greater than this
+paramgrid<-expand.grid(mtry=c(2:10),splitrule = "gini"
+                       ,min.node.size = 1) #10 is the number of vars we are using so can't be greater than this
 
 #train model
 set.seed(123)#to reproduce results
-ran_forestc2<-train(SAR ~ ., data = smotedatac2,method='rf',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC',do.trace=TRUE)
-# here we can select only a few predictor vars if we want, we specify we want to evaluate using 10 fold cross validation and tune the mtry param
-# AUC is 0.9241457%
+ran_forestc2<-train(SAR ~ ., data = smotedatac2_boruta,method='ranger',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC')
 
-## e) LogitBoost - Cluster 2 ##
+ran_forestc2
+# here we can select only a few predictor vars if we want, we specify we want to evaluate using 10 fold cross validation and tune the mtry param
+# AUC is 0.9286% ####
+
+
+#d) Logistic Model Tree - Interpretable Ensemble cluster 2 ####
+set.seed(123); LMT_c2 = train(SAR ~ ., data = smotedatac2_boruta, method= 'LMT', metric="ROC", 
+                              tuneLength=10, trControl=train_control)
+#90.25% ROC ####
+#significantly different from other models, even better than RF!! 
+LMT_c2
+
+## e) LogitBoost - Cluster 2 ####
 
 # Model Estimation
-smotedatac2noresponse<-smotedatac2[,-1]
+smotedatac2noresponse<-smotedatac2_boruta[,-11]
 set.seed(123)
 paramgrid<-expand.grid(nIter=c(2:11))
-logitboost <- train(smotedatac2noresponse, smotedatac2$SAR, 
+logitboost_c2 <- train(smotedatac2noresponse, smotedatac2_boruta$SAR, 
                     method = "LogitBoost", 
                     trControl = train_control,
                     metric = "ROC",tuneGrid=paramgrid,tuneLength = 1)
-# with more iterations the results get better, rule of thumb use nIter=no. vars (AUC=97.5%)
+# with more iterations the results get better, rule of thumb use nIter=no. of variables
+logitboost_c2# AUC 89.42% ####
 
-# Conclusion - LogitBoost is best model for cluster 2 but random forest is also good, logitboost is so hard to interpret but a good benchmark
+
+## f) XGBoost - Cluster 2 ####
+
+xgb_c2 = train(smotedatac2_boruta[,-11], smotedatac2$SAR, method = "xgbTree",
+               trControl = train_control, tuneGrid = xgb_grid_c1)
+xgb_c2
+
+xgb_c2$finalModel  #AUC 92.66%####
+#  max_depth = 8, eta = 0.01, gamma = 0.5, colsample_bytree =
+# 0.75, min_child_weight = 0 and subsample = 0.5
+
+
+
+# Conclusion cluster 2 ####
+# Decision Tree (90% AUC) does better than blackbox models (XG Boost and Logit boost)
+# RF Stands out again
+
 
 
 #models for Cluster 3 ####
-
-## a) XGBoost - Cluster 3 ##
-
-smotedatac3noresponse<-smotedatac3[,-11]
-
-set.seed(123)
-xgb_params_3 = list(
-  objective = "binary:logistic",                                               # binary classification
-  eta = 0.01,                                                                  # learning rate
-  max.depth = 3,                                                               # max tree depth
-  eval_metric = "auc"                                                          # evaluation/loss metric
-)
-
-# fit the model with the arbitrary parameters specified above
-xgb_3 = xgboost(data = as.matrix(smotedatac3noresponse),
-                label = as.numeric(as.character(smotedatac3$SAR)),
-                params = xgb_params_1,
-                nrounds = 100,                                                 # max number of trees to build
-                verbose = TRUE,                                         
-                print_every_n = 1,
-                early_stopping_rounds = 10)
-#AUC 0.940517
+## a) Logistic Regression - Cluster 3####
 
 
-## b) Logistic Regression - Cluster 3 ##
+#need to do this first to get syntactically correct level names for my factor variables (only SAR)
+feature.names3=names(smotedatac3_boruta)
 
-#need to convert features to this form to build models properly
-feature.names=names(smotedatac3)
-
-for (f in feature.names) {
-  if (class(smotedatac3[[f]])=="factor") {
-    levels <- unique(c(smotedatac3[[f]]))
-    smotedatac3[[f]] <- factor(smotedatac3[[f]],
-                               labels=make.names(levels))
+# for smotedatac3_boruta with 10 variables
+for (f in feature.names3) {
+  if (class(smotedatac3_boruta[[f]])=="factor") {
+    levels <- unique(c(smotedatac3_boruta[[f]]))
+    smotedatac3_boruta[[f]] <- factor(smotedatac3_boruta[[f]],
+                                      labels=make.names(levels))
   }
 }
 
 
+
+
+
+b3 = paste(toptenc3, collapse = ' + '); formula_b = paste('SAR ~ ',b,sep = '');b3
+# shortcut for variables to be added into model for lm statement!
+
+
+# We specify the type of evaluation we want to do
+train_control <- trainControl(method="cv",number=10,savePredictions=TRUE,summaryFunction=twoClassSummary,classProbs=TRUE)#10 fold cross validation,saves probs and preds predicted by 10 models
+#summaryFunction argument makes it possible to choose mtry based on AUC (use metric="ROC")
+
+
 ## Brief Data Exploration ##
 # Is scale imprtant? Not for logistic apparently - https://stats.stackexchange.com/questions/48360/is-standardization-needed-before-fitting-logistic-regression
-summary(smotedatac3)
-sd(smotedatac3$NUM_CASES)
-sd(smotedatac3$CUSTOMER_FOR_DAYS)#SD is a lot larger
-sd(smotedatac3$NUM_ACCOUNTS)
-sd(smotedatac3$RS_SCENARIO)
-#tree based models regression- scale doesnt matter for contin vars
+summary(smotedatac3_boruta)
+sd(smotedatac3_boruta$NUM_CASES)
+sd(smotedatac3_boruta$CUSTOMER_FOR_DAYS)#SD is a lot larger, still not a concern for logistic model building!
+sd(smotedatac3_boruta$NUM_ACCOUNTS)
+sd(smotedatac3_boruta$RS_SCENARIO)
 
-# Stepwise selection
-null <- glm(SAR ~ 1,family=binomial, data = smotedatac3)
-full <- glm(SAR ~ .,family=binomial, data = smotedatac3)
 
-step_null_bothc3<-stepAIC(null, scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "both")
-step_full_bothc3<-stepAIC(full,scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "both")
-step_null_forc3<-stepAIC(null, scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "forward")
-step_full_forc3<-stepAIC(full,scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "forward")
-step_null_backc3<-stepAIC(null, scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "backward")
-step_full_backc3<-stepAIC(full,scope=list(upper = ~ NUM_CASES+CUSTOMER_FOR_DAYS+NUM_ACCOUNTS+RS_EVENT_MONTH+RS_CUSTOMER_STATUS+RS_BUSINESS_TYPE2+RS_CUSTOMER_REGION+RS_ORIGINAL_ACCOUNT_CURRENCY+NEW_ACCOUNT_BALANCE+RS_DISTRICT_OF_BUDAPEST, lower = ~ 1), direction = "backward")
+# i)All subsets regression ####
+allsubset_df_c3_small = cbind(smotedatac3_boruta[c3_featlist_ordered$Features[1:10]],smotedatac3_boruta$SAR)
 
-step_null_bothc3$formula
-step_full_bothc3$formula
-step_null_forc3$formula
-step_full_forc3$formula
-step_null_backc3$formula
-step_full_backc3$formula
+subset_c3_small = bestglm(Xy = allsubset_df_c3_small,
+                          family = binomial,
+                          IC = "AIC",                
+                          method = "exhaustive")
 
-# Models proposed
-model1c3<-train(SAR ~ RS_BUSINESS_TYPE2 + RS_CUSTOMER_STATUS + RS_ORIGINAL_ACCOUNT_CURRENCY + 
-                  RS_EVENT_MONTH + NUM_ACCOUNTS + NUM_CASES + RS_CUSTOMER_REGION + 
-                  RS_DISTRICT_OF_BUDAPEST + NEW_ACCOUNT_BALANCE + CUSTOMER_FOR_DAYS,data=smotedatac3,method="glm", family="binomial",trControl=train_control,metric='ROC')
-summary(model1c3);BIC(model1c3)
-#no signs of separation as SD's are normal
-#suggest maybe try more than 10 vars here because all are signif - may increase performance
-#AUC=0.7792502
+subset_c3_small$BestModels
 
+#Model 1 suggests removing RS_eventmonth and rs_region  and still AIC good enough (10336.27)
+#hence by simplicity, go for model1 from above
+
+#MOdel cluster1 
+model_allsubsets_cl3_small<- train(SAR ~NUM_CASES + RS_CREDIT_DEBIT_CODE + NEW_ACCOUNT_BALANCE + NUM_ACCOUNTS + RS_SCENARIO + RS_BUSINESS_TYPE2 + CUSTOMER_FOR_DAYS + RS_REGION + RS_BASE_CURRENCY_AMOUNT,data= smotedatac3_boruta, method = "glm", family='binomial',
+                                   trControl=train_control,metric='ROC')
+
+model_allsubsets_cl3_small 
+# 0.90 AUC #### 
+model_cl3_small_glm<- glm(SAR ~ NUM_CASES + RS_CREDIT_DEBIT_CODE + NEW_ACCOUNT_BALANCE + NUM_ACCOUNTS + RS_EVENT_MONTH + RS_SCENARIO + RS_BUSINESS_TYPE2 + CUSTOMER_FOR_DAYS + RS_REGION + RS_BASE_CURRENCY_AMOUNT,data= smotedatac3_boruta,family='binomial')
+
+model_cl3_small_glm #
+
+
+
+
+
+
+
+
+#model all subsets is simpler and similar in performance (Both AIC and ROC), hence select it
 # Multicolinearity
-vif(model1c3)
-#all good in terms of correlations
+car::vif(model_cl3_small_glm)
+#no issues with correlations - all well below 5
 
-## c) Decision Tree - Cluster 3 ##
+## b) Decision Tree - Cluster 3 ####
 
 #train model
 set.seed(123)
-dec_tree4<-train(SAR ~ .,data=smotedatac3,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
-par(mfrow=c(1,1))
-fancyRpartPlot(dec_tree4$finalModel,uniform=TRUE, main="Best Tree")
+dec_tree3<-train(SAR ~ .,data= smotedatac3_boruta,method='rpart',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
+
+dec_tree3 #98.05 AUC ####
+dec_tree3$finalModel
+
+
+table(cluster3_small$RS_BUSINESS_TYPE2)
+table(cluster3_small$RS_RAISED_ON, cluster3_small$SAR)
+# 1st Num_cases >=0.5 , 2nd B3rd Num_cases>=3.5 , 4th New_Account_Balance>= 1541429  5th Customer_for_days<793.5 and >= 443.46...
+
+
 # http://rstatistics.net/decision-trees-with-r/ - see this for info
-# best dec tree has AUC=0.9583078%
+dec_tree3
+# best dec tree has  AUC 0.9849729 !!! ####
 
 #interpretting
-varimp3<-varImp(dec_tree4)
+varimp3<-varImp(dec_tree3);varimp3
+#Business type2, Raised on = Client, Num cases >0.5 and then >1.5, Scenario,District of Budapest..
 
-## d) Random Forest - Cluster 3 ##
+#Conditional Inference
+
+set.seed(123);cond_tree3<-train(SAR ~ .,data=smotedatac2_boruta,method='ctree',trControl=train_control,tuneLength = 10,metric='ROC')#97.1% AUC is best cp=0
+par(mfrow=c(1,1))
+cond_tree3$finalModel
+
+
+# c) Random Forest - Cluster 3 ####
 
 #now to see what params to tune for random forest
-paramgrid<-expand.grid(mtry=c(2:10)) #10 is the number of vars we are using so can't be greater than this
+paramgrid<-expand.grid(mtry=c(2:10),splitrule = "gini"
+                       ,min.node.size = 1) #10 is the number of vars we are using so can't be greater than this
 
 #train model
 set.seed(123)#to reproduce results
-ran_forestc3<-train(SAR ~ ., data = smotedatac3,method='rf',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC')
-# here we can select only a few predictor vars if we want, we specify we want to evaluate using 10 fold cross validation and tune the mtry param
-# AUC is 0.9620501%
+ran_forestc3<-train(SAR ~ ., data = smotedatac3_boruta,method='ranger',trControl=train_control,tuneGrid=paramgrid,metric = 'ROC')
 
-## e) LogitBoost - Cluster 3 ##
+ran_forestc3
+# here we can select only a few predictor vars if we want, we specify we want to evaluate using 10 fold cross validation and tune the mtry param
+# AUC is 0.9946 ####
+
+
+#d) Logistic Model Tree - Interpretable Ensemble cluster 3 ####
+set.seed(123); LMT_c3 = train(SAR ~ ., data = smotedatac3_boruta, method= 'LMT', metric="ROC", 
+                              tuneLength=10, trControl=train_control)
+#89.82% ROC ####
+
+
+## e) LogitBoost - Cluster 3 ####
 
 # Model Estimation
-smotedatac3noresponse<-smotedatac3[,-11]
+smotedatac3noresponse<-smotedatac3_boruta[,-11]
 set.seed(123)
 paramgrid<-expand.grid(nIter=c(2:11))
-logitboost <- train(smotedatac3noresponse, smotedatac3$SAR, 
-                    method = "LogitBoost", 
-                    trControl = train_control,
-                    metric = "ROC",tuneGrid=paramgrid,tuneLength = 1)
-# with more iterations the results get better, rule of thumb use nIter=no. vars (AUC=0.9544720%)
+logitboost_c3 <- train(smotedatac3noresponse, smotedatac3_boruta$SAR, 
+                       method = "LogitBoost", 
+                       trControl = train_control,
+                       metric = "ROC",tuneGrid=paramgrid,tuneLength = 1)
+# with more iterations the results get better, rule of thumb use nIter=no. of variables
+logitboost_c3# AUC 97.99%
 
-# Conlusion: Cluster 1 = RF, Cluster 2 = RF and DT, Cluster 3 = RF and DT
 
-## Final Evaluation - Test Set ##
+## f) XGBoost - Cluster 3 ####
+
+xgb_c3 = train(smotedatac3_boruta[,-11], smotedatac3_boruta$SAR, method = "xgbTree",
+               trControl = train_control, tuneGrid = xgb_grid_c1)
+xgb_c3
+
+xgb_c3$finalModel  #AUC 99.32%####
+#  max_depth = 8, eta = 0.01, gamma = 0, colsample_bytree =
+# 0.75, min_child_weight = 0 and subsample = 0.5
+
+
+
+
+
+
+
+# Conclusion cluster 3 ####
+# Decision Tree again the best
+
+
+## Final Evaluation - Test Set ####
+
+# Cluster 1 test ####
 
 # Cluster 1
-prob.forest.under.c1 <- predict(ran_forestc1, newdata=c1_rskm_data_test, type="prob") 
-pred.forest.under.c1 <- prediction(prob.forest.under.c1[,2], c1_rskm_data_test$SAR)
-perf.forest.under.c1 <- performance(pred.forest.under.c1, measure="tpr", x.measure="fpr") 
-plot(perf.forest.under.c1)
-auc.forest.under.c1 <- performance(pred.forest.under.c1, measure="auc")
-auc.forest.under.c1 <- auc.forest.under.c1@y.values[[1]]
-auc.forest.under.c1#AUC=95.8%
+pred_logit_c1 = predict(model2_stepwise_cl1_small, newdata=c1_rskm_data_test, type="prob")
+#pred_lmt_c1 = predict(LMT_c1, newdata=c1_rskm_data_test, type="prob")
+pred_dec_c1 = predict(dec_tree1, newdata=c1_rskm_data_test, type="prob")
+pred_cond_c1 = predict(cond_tree1, newdata=c1_rskm_data_test, type="prob")
+pred_rf_c1 = predict(ran_forestc1, newdata=c1_rskm_data_test, type="prob")
+pred_logitboost = predict(logitboost_c1,newdata=c1_rskm_data_test, type="prob")
+pred_xgb_c1 = predict(xgb_c1 , newdata = c1_rskm_data_test, type = 'prob')
 
-# Cluster 2
-prob.tree.under.c2 <- predict(dec_tree3, newdata=c2_rskm_data_test, type="prob") 
-pred.tree.under.c2 <- prediction(prob.tree.under.c2[,2], c2_rskm_data_test$SAR)
-perf.tree.under.c2 <- performance(pred.tree.under.c2, measure="tpr", x.measure="fpr") 
-plot(perf.tree.under.c2)
-auc.tree.under.c2 <- performance(pred.tree.under.c2, measure="auc")
-auc.tree.under.c2 <- auc.tree.under.c2@y.values[[1]]
-auc.tree.under.c2#68%
-
-prob.forest.under.c2 <- predict(ran_forestc2, newdata=c2_rskm_data_test, type="prob") 
-pred.forest.under.c2 <- prediction(prob.forest.under.c2[,2], c2_rskm_data_test$SAR)
-perf.forest.under.c2 <- performance(pred.forest.under.c2, measure="tpr", x.measure="fpr") 
-plot(perf.forest.under.c2)
-auc.forest.under.c2 <- performance(pred.forest.under.c2, measure="auc")
-auc.forest.under.c2 <- auc.forest.under.c2@y.values[[1]]
-auc.forest.under.c2#AUC=69%
-
-# Cluster 3
-prob.tree.under.c3 <- predict(dec_tree4, newdata=c3_rskm_data_test, type="prob") 
-pred.tree.under.c3 <- prediction(prob.tree.under.c3[,2], c3_rskm_data_test$SAR)
-perf.tree.under.c3 <- performance(pred.tree.under.c3, measure="tpr", x.measure="fpr") 
-plot(perf.tree.under.c3)
-auc.tree.under.c3 <- performance(pred.tree.under.c3, measure="auc")
-auc.tree.under.c3 <- auc.tree.under.c3@y.values[[1]]
-auc.tree.under.c3#AUC=0.7902472%
-
-prob.forest.under.c3 <- predict(ran_forestc3, newdata=c3_rskm_data_test, type="prob") 
-pred.forest.under.c3 <- prediction(prob.forest.under.c3[,2], c3_rskm_data_test$SAR)
-perf.forest.under.c3 <- performance(pred.forest.under.c3, measure="tpr", x.measure="fpr") 
-plot(perf.forest.under.c3)
-auc.forest.under.c3 <- performance(pred.forest.under.c3, measure="auc")
-auc.forest.under.c3 <- auc.forest.under.c3@y.values[[1]]
-auc.forest.under.c3#AUC=0.6955623%
+pred_c1 = cbind(pred_logit_c1[,2], pred_dec_c1[,2], pred_cond_c1[,2],pred_rf_c1[,2],
+                pred_logitboost[,2], pred_xgb_c1[,2])
+pred_c1 = data.frame(pred_c1)
+colnames(pred_c1) = cbind('logistic','decision_tree','cond_tree',"random_forest",
+                           "logitboost", 'XGB')
+colAUC(pred_c1,c1_rskm_data_test$SAR, plotROC = T)
 
 
+# That's the frame for calculating PR Sumamry
+Eval_Fun_c1 = function(pred_vector, df = c1_rskm_data_test){
+  df_test = data.frame(obs = df$SAR, YES = pred_vector)
+  df_test$obs = relevel(df_test$obs,'1')
+  levels(df_test$obs) = c('YES','NO')
+  df_test$NO = 1 - df_test$YES
+  df_test$pred = factor(ifelse(df_test$YES >= .5, "YES", "NO"))
+  df_test$obs = relevel(df_test$obs,'YES')
+  df_test$pred = relevel(df_test$pred,'YES')
+  PR = prSummary(df_test, lev = levels(df_test$obs))
+  ROC = twoClassSummary(df_test, lev = levels(df_test$obs))
+  return(c(PR,ROC))
+}
+apply(pred_c1,2,Eval_Fun_c1) ####
+
+write.xlsx(apply(pred_c1,2,Eval_Fun_c1),file  = "Results_on_test_dataset_cluster1.xlsx")
+
+# Loop for creating the list of df 
+list_lift_c1 = list()
+for (i in names(pred_c1)){
+  list_lift_c1[[i]] = data.frame(Class = as.numeric(as.character(c1_rskm_data_test$SAR)), data.frame(pred_c1), cum = 1, perpop = 1)
+  list_lift_c1[[i]] = list_lift_c1[[i]][order(list_lift_c1[[i]][[i]], decreasing = T),]
+  list_lift_c1[[i]][['cum']] = 100*cumsum(list_lift_c1[[i]][['Class']])/sum(list_lift_c1[[i]][['Class']])
+  list_lift_c1[[i]][['perpop']] = (seq(nrow(list_lift_c1[[i]]))/nrow(list_lift_c1[[i]]))*100
+}
+# Ploting Skimming Plot
+skimming_c1 = ggplot(data = NULL, aes(cum, perpop, color = Models)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_line(data = list_lift_c1[['logistic']],  aes(color = 'Logistic')) +
+  geom_line(data = list_lift_c1[['decision_tree']], aes(color = 'decision_tree')) +
+  geom_line(data = list_lift_c1[['cond_tree']], aes(color = 'cond_tree')) +
+  geom_line(data = list_lift_c1[['random_forest']], aes( color = 'RF')) +
+  geom_line(data = list_lift_c1[['logitboost']], aes(color = 'logitboost')) +
+  geom_line(data = list_lift_c1[['XGB']], aes(color = 'XGB')) +
+  labs(title = "Skimming-the-cream Plot", x ="% of SARs", y="% of Transactions") +
+  theme(legend.position = c(0.2,0.65),legend.direction = 'vertical') +
+  scale_y_continuous(breaks=seq(0,60,20), expand = c(0,0)) +
+  scale_x_continuous(breaks=seq(0,100,20)) +
+  geom_vline(xintercept = 95, linetype = 'dotdash' ) +
+  annotate("text", x = 98.5, y = 59, label = "95%", size = 4) +
+  geom_vline(xintercept = 85, linetype = 'dotdash' ) +
+  annotate("text", x = 88.5, y = 59, label = "85%", size = 4) +
+  coord_cartesian(ylim = c(0, 60))
+
+# Skim plot the ultimate result plot for cluster 1 small data####
+skimming_c1
+
+#Confusion Matrix cluster1 ####
+#confusionMatrix(unlist(pred_c1),c1_rskm_data_test$SAR)
+#positive = "1",dnn = c("Prediction", "Reference")
+
+
+#Conclusion - cluster 1 test ####
+# Decision Tree better than RF!!
+
+
+
+# Cluster 2 test ####
+
+pred_logit_c2 = predict(model_allsubsets_cl2_small, newdata=c2_rskm_data_test, type="prob")
+#pred_lmt_c2 = predict(LMT_c2, newdata=c2_rskm_data_test, type="prob")
+pred_dec_c2 = predict(dec_tree2, newdata=c2_rskm_data_test, type="prob")
+pred_cond_c2 = predict(cond_tree2, newdata=c2_rskm_data_test, type="prob")
+pred_rf_c2 = predict(ran_forestc2, newdata=c2_rskm_data_test, type="prob")
+pred_logitboost = predict(logitboost_c2,newdata=c2_rskm_data_test, type="prob")
+pred_xgb_c2 = predict(xgb_c2 , newdata = c2_rskm_data_test, type = 'prob')
+
+pred_c2 = cbind(pred_logit_c2[,2], pred_dec_c2[,2], pred_cond_c2[,2],pred_rf_c2[,2],
+                pred_logitboost[,2], pred_xgb_c2[,2])
+pred_c2 = data.frame(pred_c2)
+colnames(pred_c2) = cbind('logistic','decision_tree','cond_tree',"random_forest",
+                          "logitboost", 'XGB')
+colAUC(pred_c2,c2_rskm_data_test$SAR, plotROC = T)
+
+
+# That's the frame for calculating PR Sumamry
+Eval_Fun_c2 = function(pred_vector, df = c2_rskm_data_test){
+  df_test = data.frame(obs = df$SAR, YES = pred_vector)
+  df_test$obs = relevel(df_test$obs,'1')
+  levels(df_test$obs) = c('YES','NO')
+  df_test$NO = 1 - df_test$YES
+  df_test$pred = factor(ifelse(df_test$YES >= .5, "YES", "NO"))
+  df_test$obs = relevel(df_test$obs,'YES')
+  df_test$pred = relevel(df_test$pred,'YES')
+  PR = prSummary(df_test, lev = levels(df_test$obs))
+  ROC = twoClassSummary(df_test, lev = levels(df_test$obs))
+  return(c(PR,ROC))
+}
+apply(pred_c2,2,Eval_Fun_c2) ####
+write.xlsx(apply(pred_c2,2,Eval_Fun_c2),file  = "Results_on_test_dataset_cluster2.xlsx")
+
+# Loop for creating the list of df 
+list_lift_c2 = list()
+for (i in names(pred_c2)){
+  list_lift_c2[[i]] = data.frame(Class = as.numeric(as.character(c2_rskm_data_test$SAR)), data.frame(pred_c2), cum = 1, perpop = 1)
+  list_lift_c2[[i]] = list_lift_c2[[i]][order(list_lift_c2[[i]][[i]], decreasing = T),]
+  list_lift_c2[[i]][['cum']] = 100*cumsum(list_lift_c2[[i]][['Class']])/sum(list_lift_c2[[i]][['Class']])
+  list_lift_c2[[i]][['perpop']] = (seq(nrow(list_lift_c2[[i]]))/nrow(list_lift_c2[[i]]))*100
+}
+# Ploting Skimming Plot
+skimming_c2 = ggplot(data = NULL, aes(cum, perpop, color = Models)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_line(data = list_lift_c2[['logistic']],  aes(color = 'Logistic')) +
+  geom_line(data = list_lift_c2[['decision_tree']], aes(color = 'decision_tree')) +
+  geom_line(data = list_lift_c2[['cond_tree']], aes(color = 'cond_tree')) +
+  geom_line(data = list_lift_c2[['random_forest']], aes( color = 'RF')) +
+  geom_line(data = list_lift_c2[['logitboost']], aes(color = 'logitboost')) +
+  geom_line(data = list_lift_c2[['XGB']], aes(color = 'XGB')) +
+  labs(title = "Skimming-the-cream Plot", x ="% of SARs", y="% of Transactions") +
+  theme(legend.position = c(0.2,0.65),legend.direction = 'vertical') +
+  scale_y_continuous(breaks=seq(0,60,20), expand = c(0,0)) +
+  scale_x_continuous(breaks=seq(0,100,20)) +
+  geom_vline(xintercept = 95, linetype = 'dotdash' ) +
+  annotate("text", x = 98.5, y = 59, label = "95%", size = 4) +
+  geom_vline(xintercept = 85, linetype = 'dotdash' ) +
+  annotate("text", x = 88.5, y = 59, label = "85%", size = 4) +
+  coord_cartesian(ylim = c(0, 60))
+
+# Skim plot the ultimate result plot for cluster 2 small data####
+skimming_c2
+
+# Cluster 3 test ####
+
+pred_logit_c3 = predict(model_allsubsets_cl3_small, newdata=c3_rskm_data_test, type="prob")
+
+pred_rf_c3 = predict(ran_forestc3, newdata=c3_rskm_data_test, type="prob")
+#pred_lmt_c3 = predict(LMT_c3, newdata=c3_rskm_data_test, type="prob")
+pred_dec_c3 = predict(dec_tree3, newdata=c3_rskm_data_test, type="prob")
+pred_cond_c3 = predict(cond_tree3, newdata=c3_rskm_data_test, type="prob")
+pred_logitboost = predict(logitboost_c3,newdata=c3_rskm_data_test, type="prob")
+pred_xgb_c3 = predict(xgb_c3 , newdata = c3_rskm_data_test, type = 'prob')
+
+pred_c3 = cbind(pred_logit_c3[,2], pred_dec_c3[,2], pred_cond_c3[,2],pred_rf_c3[,2],
+                pred_logitboost[,2], pred_xgb_c3[,2])
+pred_c3 = data.frame(pred_c3)
+colnames(pred_c3) = cbind('logistic','decision_tree','cond_tree',"random_forest",
+                          "logitboost", 'XGB')
+colAUC(pred_c3,c3_rskm_data_test$SAR, plotROC = T)
+
+
+# That's the frame for calculating PR Sumamry
+Eval_Fun_c3 = function(pred_vector, df = c3_rskm_data_test){
+  df_test = data.frame(obs = df$SAR, YES = pred_vector)
+  df_test$obs = relevel(df_test$obs,'1')
+  levels(df_test$obs) = c('YES','NO')
+  df_test$NO = 1 - df_test$YES
+  df_test$pred = factor(ifelse(df_test$YES >= .5, "YES", "NO"))
+  df_test$obs = relevel(df_test$obs,'YES')
+  df_test$pred = relevel(df_test$pred,'YES')
+  PR = prSummary(df_test, lev = levels(df_test$obs))
+  ROC = twoClassSummary(df_test, lev = levels(df_test$obs))
+  return(c(PR,ROC))
+}
+apply(pred_c3,2,Eval_Fun_c3) ####
+write.xlsx(apply(pred_c3,2,Eval_Fun_c3),file  = "Results_on_test_dataset_cluster3.xlsx")
+
+# Loop for creating the list of df 
+list_lift_c3 = list()
+for (i in names(pred_c3)){
+  list_lift_c3[[i]] = data.frame(Class = as.numeric(as.character(c3_rskm_data_test$SAR)), data.frame(pred_c3), cum = 1, perpop = 1)
+  list_lift_c3[[i]] = list_lift_c3[[i]][order(list_lift_c3[[i]][[i]], decreasing = T),]
+  list_lift_c3[[i]][['cum']] = 100*cumsum(list_lift_c3[[i]][['Class']])/sum(list_lift_c3[[i]][['Class']])
+  list_lift_c3[[i]][['perpop']] = (seq(nrow(list_lift_c3[[i]]))/nrow(list_lift_c3[[i]]))*100
+}
+# Ploting Skimming Plot
+skimming_c3 = ggplot(data = NULL, aes(cum, perpop, color = Models)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_line(data = list_lift_c3[['logistic']],  aes(color = 'Logistic')) +
+  geom_line(data = list_lift_c3[['decision_tree']], aes(color = 'decision_tree')) +
+  geom_line(data = list_lift_c3[['cond_tree']], aes(color = 'cond_tree')) +
+  geom_line(data = list_lift_c3[['random_forest']], aes( color = 'RF')) +
+  geom_line(data = list_lift_c3[['logitboost']], aes(color = 'logitboost')) +
+  geom_line(data = list_lift_c3[['XGB']], aes(color = 'XGB')) +
+  labs(title = "Skimming-the-cream Plot", x ="% of SARs", y="% of Transactions") +
+  theme(legend.position = c(0.2,0.65),legend.direction = 'vertical') +
+  scale_y_continuous(breaks=seq(0,60,20), expand = c(0,0)) +
+  scale_x_continuous(breaks=seq(0,100,20)) +
+  geom_vline(xintercept = 95, linetype = 'dotdash' ) +
+  annotate("text", x = 98.5, y = 59, label = "95%", size = 4) +
+  geom_vline(xintercept = 85, linetype = 'dotdash' ) +
+  annotate("text", x = 88.5, y = 59, label = "85%", size = 4) +
+  coord_cartesian(ylim = c(0, 60))
+
+# Skim plot the ultimate result plot for cluster 2 small data####
+skimming_c3
+
+
+
+
+
+# Conlusion - cluster 3 test ####
+# Decision Tree better than RF !!!!
+
+
+## Conclusion: We choose decision trees for cluster 3 : transactions
+# For non-transactions, do we need model building? (discuss)####
+
+
+par(mfrow= c(3,3))
+
+skimming_c1
+skimming_c2
+skimming_c3
+
+
+
+## Variable Importance - to check with existing scenarios ####
+varimp1
+varimp2
+varimp3
